@@ -1,0 +1,17 @@
+# Base bridge settings. Values marked TODO are measured at checkpoint CP2 (PLAN.md section 12).
+base_bridge:
+  ros__parameters:
+    port: /dev/nontok_mega
+    baud: 115200
+    wheel_diameter_m: 0.080     # TODO: calibrate_odometry straight
+    counts_per_rev: 660.0       # TODO: turn a wheel 10 times and count
+    rotation_arm_m: 0.160       # TODO: half wheelbase + half track
+    scale_x: 1.0
+    scale_y: 1.0                # TODO: calibrate_odometry strafe
+    gyro_scale: 1.009           # 1 / 0.991 measured 27 Oct in ../Nontok; re-check with "spin"
+    cmd_timeout_s: 0.25         # a /cmd_vel older than this is treated as zero
+    max_range_m: 1.5
+    range_fov_rad: 0.26
+    vx_std: 0.02
+    vy_std: 0.05
+    gyro_std: 0.01

@@ -1,0 +1,22 @@
+<!-- As nav_to_pose_no_spin.xml, for a list of goals. The mission does not use it, but the
+     navigator refuses to start unless this tree also loads, and the stock one needs spin. -->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="3" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <Sequence>
+            <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.5"/>
+            <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
+          </Sequence>
+        </RateController>
+        <FollowPath path="{path}" controller_id="FollowPath"/>
+      </PipelineSequence>
+      <Sequence name="RecoveryActions">
+        <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
+        <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap"/>
+        <Wait wait_duration="5"/>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

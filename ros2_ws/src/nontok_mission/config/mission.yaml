@@ -1,0 +1,20 @@
+mission_node:
+  ros__parameters:
+    nav_timeout_s: 120.0
+    nav_attempts: 2
+    align_timeout_s: 45.0
+    align_attempts: 2
+    dock_attempts: 3
+    retreat_timeout_s: 15.0
+    item_wait_s: 120.0
+    classify_retries: 2
+    classify_retry_wait_s: 4.0
+    tray_up_deg: 50.0            # TODO tune with real items
+    dump_hold_s: 1.5
+    dump_settle_s: 1.0
+    dump_repeats: 1
+    localization_grace_s: 5.0
+    dock_requires_charge: false  # set true once the charge-sense divider is wired (firmware CHARGE_SENSE_FITTED)
+    charge_threshold_v: 4.0
+    wait_for_nav2: true
+    log_dir: ~/nontok_logs

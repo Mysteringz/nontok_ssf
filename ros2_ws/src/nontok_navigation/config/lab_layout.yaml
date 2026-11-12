@@ -1,0 +1,16 @@
+# The lab as rectangles, in metres, in the map frame (origin = docked robot, x = the way it
+# faces, y = its left). PLACEHOLDER ROOM matching the placeholder tags.yaml: measure the lab.
+# Each rectangle is [x1, y1, x2, y2] (two opposite corners). After editing, regenerate:
+#   python3 -m nontok_navigation.draw_map --layout config/lab_layout.yaml --out config/map
+resolution: 0.05
+bounds: [-3.50, -1.50, 1.10, 3.50]        # area covered by the map: [x_min, y_min, x_max, y_max]
+
+walls:
+  - {name: dock wall,    rect: [0.62, -1.10, 0.72, 3.10]}
+  - {name: pickup wall,  rect: [-3.12, -1.10, -3.02, 3.10]}
+  - {name: station wall north, rect: [-3.12, 3.02, 0.72, 3.12]}
+  - {name: station wall south, rect: [-3.12, -1.12, 0.72, -1.02]}
+
+furniture: []      # benches, cabinets, fixed equipment
+
+keep_out: []       # places the robot must not enter even though they look free (chair zones)

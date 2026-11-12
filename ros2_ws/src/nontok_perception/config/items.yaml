@@ -1,0 +1,15 @@
+# Which station each item type goes to (PLAN.md section 7.4).
+# PLACEHOLDER LIST: the team must fix the demo items (3-5 types per station). The names here
+# must match the class folder names used for training. "empty" needs no entry.
+items:
+  resistor: electrical
+  capacitor: electrical
+  jumper_wire: electrical
+  bolt: mechanical
+  nut: mechanical
+  bracket: mechanical
+  wire_offcut: scraps
+  solder_blob: scraps
+  screwdriver: tools
+  pliers: tools
+  wire_stripper: tools

@@ -1,0 +1,16 @@
+# Starts Nontok at boot. Enable only after checkpoint CP10 has passed.
+#   sudo cp nontok.service /etc/systemd/system/ && sudo systemctl enable --now nontok
+# Replace USER and the workspace path first.
+[Unit]
+Description=Nontok self-return robot
+After=network.target
+
+[Service]
+User=USER
+Environment=ROS_LOCALHOST_ONLY=1
+ExecStart=/bin/bash -c 'source /opt/ros/humble/setup.bash && source /home/USER/Nontok_ssf/ros2_ws/install/setup.bash && ros2 launch nontok_bringup nontok.launch.py'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

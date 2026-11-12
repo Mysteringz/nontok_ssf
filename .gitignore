@@ -1,0 +1,13 @@
+.pio/
+__pycache__/
+*.pyc
+.pytest_cache/
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+training/dataset/
+training/runs/
+*.onnx
+*.pt
+.DS_Store
+.vscode/

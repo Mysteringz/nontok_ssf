@@ -1,0 +1,44 @@
+# robot_localization, two filters (PLAN.md section 5.4).
+# State order of the *_config rows: x y z, roll pitch yaw, vx vy vz, vroll vpitch vyaw, ax ay az.
+
+# Smooth, drifting pose from wheels + gyro. Publishes odom -> base_link.
+ekf_local:
+  ros__parameters:
+    frequency: 25.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+    odom0: wheel/odom
+    odom0_config: [false, false, false, false, false, false, true, true, false, false, false, false, false, false, false]
+    odom0_queue_size: 10
+    imu0: imu/data
+    imu0_config: [false, false, false, false, false, false, false, false, false, false, false, true, false, false, false]
+    imu0_queue_size: 10
+
+# Same inputs plus tag fixes. Publishes map -> odom.
+ekf_global:
+  ros__parameters:
+    frequency: 25.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: map
+    odom0: wheel/odom
+    odom0_config: [false, false, false, false, false, false, true, true, false, false, false, false, false, false, false]
+    odom0_queue_size: 10
+    imu0: imu/data
+    imu0_config: [false, false, false, false, false, false, false, false, false, false, false, true, false, false, false]
+    imu0_queue_size: 10
+    pose0: tag_pose
+    pose0_config: [true, true, false, false, false, true, false, false, false, false, false, false, false, false, false]
+    pose0_queue_size: 10
+    # Tag fixes arrive 50-150 ms after the image was taken: rewind and replay.
+    smooth_lagged_data: true
+    history_length: 1.0

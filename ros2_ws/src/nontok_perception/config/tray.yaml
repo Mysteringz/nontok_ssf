@@ -1,0 +1,16 @@
+tray_node:
+  ros__parameters:
+    device: /dev/cam_tray
+    width: 640
+    height: 480
+    # Tray floor corners in the image as fractions: x1 y1 x2 y2 x3 y3 x4 y4. TODO set once mounted.
+    roi: [0.10, 0.10, 0.90, 0.10, 0.90, 0.90, 0.10, 0.90]
+    diff_threshold: 25
+    occupied_on: 0.02
+    occupied_off: 0.01
+    motion_threshold: 0.005
+    stable_s: 2.0
+    votes: 5
+    min_confidence: 0.80
+    simulate: false
+    fake_item: ""

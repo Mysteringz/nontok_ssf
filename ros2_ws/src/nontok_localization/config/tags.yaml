@@ -1,0 +1,21 @@
+# Tag positions in the map frame (PLAN.md section 5.2). PLACEHOLDER LAYOUT: measure the lab.
+#   x, y, z : centre of the tag in metres. Origin = robot centre when docked, x = the way the
+#             docked robot faces, y = to its left, z = height above the floor.
+#   yaw_deg : direction the tag FACES (its outward normal), in map degrees.
+#             A tag on the wall straight ahead of the docked robot faces back at it: 180.
+# Station and dock tags come in pairs 0.30 m apart; the lower id is on the left as you face them.
+default_size: 0.160
+tags:
+  0:  {x: 0.60, y:  0.15, z: 0.20, yaw_deg: 180.0}   # dock, left
+  1:  {x: 0.60, y: -0.15, z: 0.20, yaw_deg: 180.0}   # dock, right
+  2:  {x: -3.00, y: 1.85, z: 0.20, yaw_deg: 0.0}     # pickup, left
+  3:  {x: -3.00, y: 2.15, z: 0.20, yaw_deg: 0.0}     # pickup, right
+  10: {x: -1.15, y: 3.00, z: 0.20, yaw_deg: -90.0}   # electrical, left
+  11: {x: -0.85, y: 3.00, z: 0.20, yaw_deg: -90.0}   # electrical, right
+  12: {x: -2.15, y: 3.00, z: 0.20, yaw_deg: -90.0}   # mechanical
+  13: {x: -1.85, y: 3.00, z: 0.20, yaw_deg: -90.0}
+  14: {x: -0.85, y: -1.00, z: 0.20, yaw_deg: 90.0}   # scraps
+  15: {x: -1.15, y: -1.00, z: 0.20, yaw_deg: 90.0}
+  16: {x: -1.85, y: -1.00, z: 0.20, yaw_deg: 90.0}   # tools
+  17: {x: -2.15, y: -1.00, z: 0.20, yaw_deg: 90.0}
+  # Route tags: 30 and up.

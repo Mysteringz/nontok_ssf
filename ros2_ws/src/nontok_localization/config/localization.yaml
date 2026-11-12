@@ -1,0 +1,16 @@
+tag_localizer:
+  ros__parameters:
+    cameras: [front_left, front_right, rear]
+    max_range_m: 2.5
+    max_view_angle_deg: 60.0
+    yaw_range_m: 1.5
+    max_reprojection_px: 3.0
+    sigma_xy_1m: 0.02
+    sigma_yaw_1m_deg: 2.0
+    max_jump_m: 0.5
+    max_jump_deg: 20.0
+    relocalise_after: 3
+    healthy_age_s: 10.0
+    healthy_travel_m: 3.0
+    require_tags: true
+    dock_pose: [0.0, 0.0, 0.0]

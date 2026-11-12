@@ -1,0 +1,13 @@
+# Fixed device names for Nontok. Install:
+#   sudo cp 99-nontok.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+#
+# Mega 2560 clone (CH340 USB serial).
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="nontok_mega", MODE="0666"
+
+# Cameras, by the USB port they are plugged into (identical cameras cannot be told apart
+# otherwise). Find each port with:  udevadm info -a /dev/video0 | grep KERNELS
+# then replace the KERNELS values below and label the ports on the robot.
+SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.1", SYMLINK+="cam_front_left"
+SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.2", SYMLINK+="cam_front_right"
+SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.3", SYMLINK+="cam_rear"
+SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.4", SYMLINK+="cam_tray"

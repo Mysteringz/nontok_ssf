@@ -1,0 +1,13 @@
+# Shared by every tag_detector; the launch file adds camera_name and device per camera.
+/**:
+  ros__parameters:
+    width: 1280
+    height: 720
+    fps: 30
+    exposure: -1.0        # TODO: fixed short exposure once the cameras are known (v4l2-ctl --list-ctrls)
+    rate_hz: 10.0
+    quad_decimate: 2.0
+    threads: 2
+    min_decision_margin: 50.0
+    backend: auto
+    debug: false

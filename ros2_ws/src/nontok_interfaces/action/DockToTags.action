@@ -1,0 +1,13 @@
+string station          # key in stations.yaml
+bool require_charge     # true only for the charging dock
+---
+bool success
+float32 lateral_error_m
+float32 distance_error_m
+float32 yaw_error_rad
+string message
+---
+string phase
+float32 lateral_error_m
+float32 distance_error_m
+float32 yaw_error_rad

@@ -1,0 +1,23 @@
+# Docking settings (PLAN.md section 5.7). Station distances come from stations.yaml.
+dock_server:
+  ros__parameters:
+    cameras: [front_left, front_right]
+    approach_speed: 0.08
+    final_speed: 0.04
+    max_yaw_rate: 0.3
+    gain_forward: 0.8
+    gain_sideways: 1.0
+    gain_yaw: 1.5
+    pre_distance_m: 0.15
+    lateral_tolerance_m: 0.015
+    distance_tolerance_m: 0.020
+    yaw_tolerance_deg: 3.0
+    dock_lateral_tolerance_m: 0.010      # tighter at the charger; TODO confirm against the coil
+    dock_distance_tolerance_m: 0.010
+    dock_yaw_tolerance_deg: 2.0
+    blind_distance_m: 0.30
+    total_timeout_s: 30.0
+    charge_threshold_v: 4.0              # TODO measure the receiver voltage on the coil
+    undock_distance_m: 0.30
+    undock_speed: 0.08
+    max_measurement_age_s: 0.4           # tag views older than this are not used for steering

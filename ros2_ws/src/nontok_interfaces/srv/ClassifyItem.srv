@@ -1,0 +1,5 @@
+---
+bool success            # false = unknown item or low confidence
+string item
+string station
+float32 confidence

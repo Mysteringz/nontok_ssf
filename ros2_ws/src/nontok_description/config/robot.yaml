@@ -1,0 +1,19 @@
+# Robot geometry. PLACEHOLDERS: measure everything on the real robot (PLAN.md section 12).
+# Positions are in metres relative to base_link: the centre of the four wheels, on the floor,
+# x forward (toward the ultrasonic end), y left, z up. Angles in degrees.
+footprint: [[0.17, 0.14], [0.17, -0.14], [-0.17, -0.14], [-0.17, 0.14]]   # corners, clockwise from front-left
+
+imu: {xyz: [0.0, 0.0, 0.08]}
+
+cameras:          # xyz = lens position; yaw = viewing direction; pitch > 0 looks downward
+  front_left:  {xyz: [0.12, 0.06, 0.20],  yaw_deg: 0.0,   pitch_deg: 0.0}
+  front_right: {xyz: [0.12, -0.06, 0.20], yaw_deg: 0.0,   pitch_deg: 0.0}
+  rear:        {xyz: [-0.12, 0.0, 0.20],  yaw_deg: 180.0, pitch_deg: 0.0}
+  tray:        {xyz: [0.0, 0.0, 0.45],    yaw_deg: 0.0,   pitch_deg: 90.0}
+
+ranges:           # xyz = sensor face; yaw = beam direction
+  left45:  {xyz: [0.11, 0.07, 0.08],  yaw_deg: 45.0}
+  right45: {xyz: [0.11, -0.07, 0.08], yaw_deg: -45.0}
+  front:   {xyz: [0.13, 0.0, 0.08],   yaw_deg: 0.0}
+  left:    {xyz: [0.0, 0.10, 0.08],   yaw_deg: 90.0}
+  right:   {xyz: [0.0, -0.10, 0.08],  yaw_deg: -90.0}

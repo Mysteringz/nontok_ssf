@@ -1,0 +1,8 @@
+wake_node:
+  ros__parameters:
+    device: ""            # empty = default microphone; else a sounddevice name or index
+    threshold: 0.5        # TODO choose with: python3 -m nontok_voice.eval_wake
+    window: 3
+    needed: 2
+    refractory_s: 3.0
+    start_enabled: false  # the mission enables listening while docked

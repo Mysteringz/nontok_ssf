@@ -1,0 +1,13 @@
+# Stations (PLAN.md section 5.5). Positions come from the tags in tags.yaml; this file says
+# how close to stop. Distances are from the wall the tags are on to the robot's centre.
+#   tag_ids          [left, right] as you face the tags
+#   standoff_m       final position after alignment            TODO: tune with the real tray and boxes
+#   approach_m       Nav2 goal; alignment starts from here
+#   lateral_offset_m + = stop right of centre (facing the tags)
+stations:
+  dock:       {tag_ids: [0, 1],   standoff_m: 0.60, approach_m: 1.10, is_dock: true}
+  pickup:     {tag_ids: [2, 3],   standoff_m: 0.50, approach_m: 0.90}
+  electrical: {tag_ids: [10, 11], standoff_m: 0.35, approach_m: 0.90}
+  mechanical: {tag_ids: [12, 13], standoff_m: 0.35, approach_m: 0.90}
+  scraps:     {tag_ids: [14, 15], standoff_m: 0.35, approach_m: 0.90}
+  tools:      {tag_ids: [16, 17], standoff_m: 0.35, approach_m: 0.90}
