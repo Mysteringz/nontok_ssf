@@ -15,19 +15,16 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
 from rclpy.node import Node
-from rclpy.time import Time
 from sensor_msgs.msg import Range
 from std_srvs.srv import Trigger
-from tf2_ros import Buffer, TransformException, TransformListener
 
 from nontok_interfaces.action import DockToTags
 from nontok_interfaces.msg import BaseStatus, TagDetectionArray
 from nontok_localization.camera import make_camera
 from nontok_localization.pose_solver import SolverConfig, solve
-from nontok_localization.ros_util import detections_of, matrix_of, pose2d_of, seconds_of
+from nontok_localization.ros_util import CameraFinder, detections_of, pose2d_of, seconds_of
 from nontok_localization.tag_geometry import TagMap, pair_map
 from nontok_navigation.stations import load_stations, tag_spacing
 
@@ -55,10 +52,6 @@ class DockServer(Node):
             p(name, default)
         self.solver_cfg = SolverConfig(max_range_m=2.0)
 
-        self.tf_buffer = Buffer()
-        # /tf is busy; its own thread keeps it from delaying the measurements below.
-        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
-        self.cameras = {}
         self.odom = PoseBuffer()
         self.front_range = None
         self.charge_v = 0.0
@@ -78,6 +71,7 @@ class DockServer(Node):
         # Sharing an executor with the long-running action starved them: odometry arrived
         # at 3-8 Hz and up to a second late, and the robot then steered on old data.
         self.inputs = rclpy.create_node('dock_server_inputs')
+        self.finder = CameraFinder(self.inputs, camera_names, self.cameras_dir, make_camera)
         self.inputs.create_subscription(Odometry, 'odometry/local', self.on_odometry, 20)
         self.inputs.create_subscription(Range, 'range/front', self.on_front, 5)
         self.inputs.create_subscription(BaseStatus, 'base/status', self.on_status, 5)
@@ -105,18 +99,6 @@ class DockServer(Node):
     def on_status(self, msg):
         self.charge_v = msg.charge_v
 
-    def camera_for(self, msg):
-        camera = self.cameras.get(msg.camera)
-        if camera is None:
-            try:
-                tf = self.tf_buffer.lookup_transform('base_link', msg.header.frame_id, Time(), Duration(seconds=0.0))
-            except TransformException:
-                return None
-            camera = make_camera(msg.camera, os.path.join(self.cameras_dir, msg.camera + '.yaml'),
-                                 matrix_of(tf.transform))
-            self.cameras[msg.camera] = camera
-        return camera
-
     def on_detections(self, msg):
         with self.lock:
             controller, pair = self.controller, self.pair
@@ -129,7 +111,7 @@ class DockServer(Node):
         if age > self.value('max_measurement_age_s'):
             self.dropped += 1
             return
-        camera = self.camera_for(msg)
+        camera = self.finder.get(msg.camera)
         if camera is None:
             return
         fix = solve(detections_of(msg), camera, pair, self.solver_cfg)

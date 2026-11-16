@@ -34,6 +34,7 @@ No LiDAR, no SLAM, no new sensors. Budget cap: HK$500.
 | # | Assumption | Why it matters |
 |---|---|---|
 | A1 | The computer is a **Jetson Orin Nano** (JetPack 6, Ubuntu 22.04). `../Nontok/README.md` says "Jetson Nano" with a JetPack 4 container. | An original Jetson Nano cannot run ROS 2 Humble natively and has far less compute. If it is the old Nano, ROS 2 must run in Docker and the camera rates in §5.3 must be halved. |
+| A1 — settled 16 November 2026 | **It is the original Jetson Nano Developer Kit, 4 GB** (JetPack 4.6, L4T R32.6.1, Ubuntu 18.04). | ROS 2 Humble runs in Docker; see section 14.4. Wherever sections 1–13 say Orin Nano, JetPack 6 or a native install, section 14.4 applies instead. |
 | A2 | The four cameras are USB UVC webcams that can output 1280×720 MJPEG. | Sets tag range (§5.2) and USB layout (§3.4). |
 | A3 | The tray tips **forward**, over the front of the robot. | The front cameras and front ultrasonic then do the station alignment. If it tips to the rear, the rear camera does it and §7.5 is mirrored. |
 | A4 | One preset pickup point. | The wake word alone cannot say which bench is calling. Several pickup points is a stretch goal (§11). |
@@ -1252,11 +1253,13 @@ First implementation pass, 12 November 2026, done without the robot. Where this 
 | WP10 mission | State machine, ROS wrapper, launch files | 23 tests: every station and every failure branch | CP10 |
 | WP11 tools | `preflight.py`, `mission_report.py`, `record_bag.sh` | Report logic checked | — |
 
-Test count: 119 Python tests and 14 firmware host tests, all passing.
+Test count: 120 Python tests and 14 firmware host tests, all passing.
 
 Second pass, same day, in a ROS 2 Humble container (`docker/Dockerfile`): `colcon build` passes for all ten packages, the full launch starts with `fake:=true`, and a simulated mission (`tools/sim_in_docker.sh <item>`) completed for all four stations in 108–165 s. The simulation has no camera images, wheel slip or obstacles.
 
 Third pass, 13 November 2026: docking in those runs ended 3–30 mm from the true dock, and in repeated trials up to 34 mm and 20° off while reporting success. Cause: inside the dock server the sensor subscriptions shared an executor with the long-running action and were starved, so tag measurements reached the controller 1–3 s late and odometry arrived at 3–8 Hz. After the changes in 14.2, 10 of 10 simulated dockings from random starts ended within 5 mm and 0.1° of the true dock, and two full missions docked within 5 mm.
+
+Fourth pass, 16 November 2026, on the team's Jetson (section 14.4): the image built for the laptop runs there unchanged, `colcon build` takes 1 min 40 s, the tests pass, and after the changes marked "Jetson" in 14.2 a simulated mission completed for all four stations in 89–96 s, each alignment within 10 mm, with no late or rejected tag measurements.
 
 ### 14.2 Changes from sections 1–13
 
@@ -1284,6 +1287,12 @@ Third pass, 13 November 2026: docking in those runs ended 3–30 mm from the tru
 | End of docking | Stop on entering the tolerance | Stop on entering half the tolerance (`stop_fraction`), then check against the full tolerance | The robot stopped at the edge of the 10 mm band |
 | Docking log | — | One line per docking: result, errors, number of fixes, oldest measurement, rejection counts, odometry rate | Shows this fault at a glance if it returns on the Jetson |
 | Velocity stream to the Mega | Executor timer | Own thread | The timer was held up for more than 300 ms now and then, tripping the watchdog |
+| Nav2 controller (Jetson) | MPPI | DWB behind the rotation shim, 10 Hz, same limits (0.25 m/s forward, 0.08 m/s sidestep, no reversing) | The packaged MPPI controller dies with an illegal instruction on the Nano's Cortex-A57. DWB alone sat still when the goal was behind the robot; the shim turns it first |
+| Ultrasonic silence (Jetson) | Range layer `no_readings_timeout` 2 s | Layer timeout off; the base bridge sends zero velocity and reports `RANGES_LOST` when no `RNG` line arrives for 1 s | In this Nav2 release one gap over the timeout (a slow start is enough) leaves the local costmap "not current" for good and the controller waits for ever, with no error. Seen on the Jetson and reproduced on a laptop limited to 1.5 CPUs |
+| Pose fit (Jetson) | OpenCV projection in every step, numeric derivatives | Corners undistorted once, plain pinhole arithmetic, analytic derivatives, looser stopping rule | 18–35 ms per image on the Nano; now about 13 ms before the stopping rule was loosened, same answers |
+| Tag fixes used | Every image | At most `max_fix_rate_hz` (5) per camera | The fit is the localiser's main cost and the filter gains nothing from more |
+| Camera mounting lookup (Jetson) | Each node listens to `/tf` | A throw-away node finds the mountings once and is destroyed (`CameraFinder`) | Unpacking every transform cost each Python node a large share of a Nano core. Do not remove a `/tf` subscription from a spinning node: that left nodes hung |
+| Foxglove bridge | Always started | Only with `viewer:=true` | CPU |
 | ROS-dependent tools | `tools/` | Console scripts inside their packages: `calibrate_odometry` (includes the square test), `make_tags`, `calibrate_camera`, `verify_tags`, `draw_map`, `eval_wake` | They import package code |
 | M4 encoder direction | Decide at CP1 | Defaults to "from the command" (`M4_DIR_FROM_COMMAND 1`) | A1 is reported broken; safest default |
 
@@ -1296,4 +1305,25 @@ Third pass, 13 November 2026: docking in those runs ended 3–30 mm from the tru
 - The tray difference detector needs contrast between item and tray floor: a grey item on a grey tray is not seen. Choose the tray colour with the item list in mind.
 - The simulated tags are ideal corner positions with 0.3 px noise; no image has gone through the detector node.
 - The other nodes that use a multi-threaded executor (mission, tray, base bridge services) have not been checked for the delays found in the dock server. On the Jetson, read the docking log line: the oldest tag message should stay near 0.1 s and odometry near 25 Hz.
+- CPU on the Jetson Nano is the tightest resource. With simulated tags the launch uses about half of the four cores; real MJPG decoding and tag detection for three cameras are still to be added and measured. Stop the desktop session for real runs (`sudo systemctl isolate multi-user.target`).
+- `tools/sim_in_docker.sh` accepts `NONTOK_DOCKER_ARGS="--cpus 1.5"`; that limit reproduces Jetson-like timing faults on a laptop and is worth using before every push to the robot.
+
+### 14.4 The Jetson as found (16 November 2026)
+
+| Item | Value |
+|---|---|
+| Board | Jetson Nano Developer Kit, 4 GB, Cortex-A57 x4 |
+| System | JetPack 4.6 (L4T R32.6.1), Ubuntu 18.04, kernel 4.9.253-tegra, Python 3.6 |
+| ROS 2 | Humble inside Docker only: the `nontok-dev` image from `docker/Dockerfile` (Ubuntu 22.04, arm64). Build it on an arm64 laptop and copy it over with `docker save nontok-dev \| gzip \| ssh ... docker load`; Docker 20.10.2 on the Jetson runs it. Use `--privileged --network host` and pass the cameras and the Mega through for real runs |
+| Project | `~/nontok` (copied with rsync; build inside the container) |
+| GPU in the container | Not set up. `onnxruntime` runs on the CPU |
+| Fan | Automatic; it starts near 50 °C. `echo 255 \| sudo tee /sys/devices/pwm-fan/target_pwm` forces it on |
+
+Cameras: two "1080P USB Camera" (`2bdf:0289`) and two "XWF 1080P PC Camera" (`1bcf:2285`), all MJPG, each fine alone.
+
+- All four USB ports share one USB 2.0 bus and each camera reserves most of it, so the stock driver streams only one camera at a time.
+- A patched `uvcvideo` is installed on the Jetson (source and build in `~/uvc-patched`, stock module saved as `~/uvc-patched/uvcvideo.ko.stock`, option `mjpg_bandwidth=800` in `/etc/modprobe.d/nontok-uvcvideo.conf`). It caps the bandwidth reserved for compressed streams. With it three cameras stream together: 640x480 at 20–28 fps, 1280x720 at 14–19 fps, no bad frames.
+- The two `2bdf` cameras can never stream together on this bus: they offer a single bandwidth setting and two of them exceed the limit. Use the XWF pair as the front cameras, one `2bdf` as the rear camera and the other as the tray camera, and run the tray camera only while the rear one is off (the robot is stationary at the pickup point then). The camera nodes do not do this switching yet.
+- The cameras of a pair have identical names and serial numbers; address them by USB port (`/dev/v4l/by-path/...usb-0:2.N:1.0-video-index0`) and keep each in its port.
+- A JetPack update that replaces the kernel modules removes the patched driver.
 

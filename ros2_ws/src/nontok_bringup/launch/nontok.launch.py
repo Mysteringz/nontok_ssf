@@ -2,6 +2,7 @@
 
     ros2 launch nontok_bringup nontok.launch.py
     ros2 launch nontok_bringup nontok.launch.py fake:=true fake_item:=bolt     no hardware at all
+    ... viewer:=true                                                           also start the Foxglove bridge (port 8765)
 
 With fake:=true the Mega is simulated, cameras and the wake word are off, and the tray is
 driven by hand:
@@ -16,7 +17,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import UnlessCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -34,6 +35,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('fake', default_value='false'),
         DeclareLaunchArgument('fake_item', default_value=''),
+        DeclareLaunchArgument('viewer', default_value='false'),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(here, 'base.launch.py')),
                                  launch_arguments={'fake': fake}.items()),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(here, 'localization.launch.py')),
@@ -50,5 +52,7 @@ def generate_launch_description():
              condition=UnlessCondition(fake), output='screen'),
         Node(package='nontok_mission', executable='mission_node',
              parameters=[share('nontok_mission', 'config', 'mission.yaml')], output='screen'),
-        Node(package='foxglove_bridge', executable='foxglove_bridge', parameters=[{'port': 8765}]),
+        # Off unless asked for: on the Jetson Nano the viewer bridge takes CPU the robot needs.
+        Node(package='foxglove_bridge', executable='foxglove_bridge', parameters=[{'port': 8765}],
+             condition=IfCondition(LaunchConfiguration('viewer'))),
     ])

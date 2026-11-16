@@ -256,3 +256,18 @@ def test_rearms_after_a_watchdog_trip_but_not_after_a_stop_and_not_for_ever():
     core.handle_line('OK STOP', 1.0)
     core.handle_line('ERR WATCHDOG', 1.1)
     assert core.rearm_line(2.0) is None                 # a person asked for the stop
+
+
+def test_no_movement_without_fresh_ultrasonic_readings():
+    core = BridgeCore(MecanumParams())
+    core.handle_line('OK ARM', 0.0)
+    core.set_command(0.2, 0.0, 0.0, 0.0)
+    zero, moving = protocol.encode_vel(0.0, 0.0, 0.0), protocol.encode_vel(0.2, 0.0, 0.0)
+    assert core.velocity_line(0.1) == zero              # no ultrasonics heard yet
+    core.handle_line('RNG 100 500 500 500 500 500', 0.1)
+    core.set_command(0.2, 0.0, 0.0, 0.2)
+    assert core.velocity_line(0.2) == moving
+    core.set_command(0.2, 0.0, 0.0, 1.5)
+    assert core.velocity_line(1.5) == zero              # readings stopped more than 1 s ago
+    assert not core.ranges_fresh(1.5)
+    assert BridgeCore(MecanumParams(), range_timeout_s=0.0).ranges_fresh(5.0)   # check switched off

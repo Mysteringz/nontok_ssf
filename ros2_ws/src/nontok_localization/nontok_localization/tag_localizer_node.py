@@ -1,15 +1,11 @@
 """ROS 2 node: turns tag detections into position fixes for the global EKF (PLAN.md 13.7)."""
 import math
-import os
 
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
-from rclpy.duration import Duration
 from rclpy.node import Node
-from rclpy.time import Time
 from std_srvs.srv import Trigger
-from tf2_ros import Buffer, TransformException, TransformListener
 
 from nontok_interfaces.msg import LocalizationStatus, TagDetectionArray
 
@@ -17,7 +13,7 @@ from . import fix_gate
 from .camera import make_camera
 from .fix_gate import FixGate, HealthTracker
 from .pose_solver import SolverConfig, solve
-from .ros_util import detections_of, matrix_of, pose2d_of, seconds_of, set_yaw
+from .ros_util import CameraFinder, detections_of, pose2d_of, seconds_of, set_yaw
 from .tag_geometry import TagMap
 
 
@@ -46,9 +42,11 @@ class TagLocalizer(Node):
         self.require_tags = p('require_tags', True).value
         self.dock_pose = p('dock_pose', [0.0, 0.0, 0.0]).value
 
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
-        self.cameras = {}          # name -> Camera, filled once its transform is known
+        self.finder = CameraFinder(self, self.camera_names, self.cameras_dir, make_camera)
+        # Each camera's fixes are used at most this often. More adds nothing the filter can
+        # use and the pose fit is the most expensive thing this node does.
+        self.min_fix_interval = 1.0 / p('max_fix_rate_hz', 5.0).value
+        self.last_solved = {}      # camera -> time of the last image used
         self.estimate = None       # (x, y, yaw) from the global EKF
         self.tags_in_view = {}     # camera -> (count, time)
         self.last_reset = -1e9     # when the filter was last reset from tags
@@ -70,28 +68,17 @@ class TagLocalizer(Node):
         self.estimate = pose2d_of(msg.pose.pose)
         self.health.on_odometry(self.estimate[0], self.estimate[1])
 
-    def camera_for(self, msg):
-        camera = self.cameras.get(msg.camera)
-        if camera is not None:
-            return camera
-        try:
-            tf = self.tf_buffer.lookup_transform('base_link', msg.header.frame_id, Time(),
-                                                 Duration(seconds=0.0))
-        except TransformException:
-            return None   # robot_state_publisher not up yet
-        path = os.path.join(self.cameras_dir, msg.camera + '.yaml')
-        camera = make_camera(msg.camera, path, matrix_of(tf.transform))
-        self.cameras[msg.camera] = camera
-        return camera
-
     def on_detections(self, msg: TagDetectionArray) -> None:
         stamp = seconds_of(msg.header.stamp)
         self.tags_in_view[msg.camera] = (len(msg.detections), stamp)
         if not msg.detections:
             return
-        camera = self.camera_for(msg)
+        if stamp - self.last_solved.get(msg.camera, -1e9) < self.min_fix_interval - 0.01:
+            return
+        camera = self.finder.get(msg.camera)
         if camera is None:
             return
+        self.last_solved[msg.camera] = stamp
         prior_yaw = self.estimate[2] if self.estimate is not None else None
         fix = solve(detections_of(msg), camera, self.tag_map, self.cfg, prior_yaw)
         if fix is None:

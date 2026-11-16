@@ -58,11 +58,13 @@ class RangeFilter:
 
 class BridgeCore:
     def __init__(self, params: MecanumParams, gyro_scale: float = 1.0, cmd_timeout_s: float = 0.25,
-                 odo_timeout_s: float = 0.5, max_range: float = 1.5):
+                 odo_timeout_s: float = 0.5, max_range: float = 1.5, range_timeout_s: float = 1.0):
         self.params = params
         self.gyro_scale = gyro_scale
         self.cmd_timeout_s = cmd_timeout_s
         self.odo_timeout_s = odo_timeout_s
+        self.range_timeout_s = range_timeout_s   # 0 = do not require the ultrasonics
+        self._last_range_receive: Optional[float] = None
         self.clock = ClockSync()
         self.range_filters = {name: RangeFilter(max_range) for name in protocol.RANGE_NAMES}
 
@@ -98,6 +100,8 @@ class BridgeCore:
         if not self.armed:
             return None
         fresh = self._cmd_time is not None and now - self._cmd_time <= self.cmd_timeout_s
+        if not self.ranges_fresh(now):
+            fresh = False   # no ultrasonics, no movement: nothing else sees an obstacle
         vx, vy, wz = self._cmd if fresh else (0.0, 0.0, 0.0)
         return protocol.encode_vel(vx, vy, wz)
 
@@ -124,11 +128,18 @@ class BridgeCore:
         return protocol.ARM
 
     # ---- health ----
+    def ranges_fresh(self, now: float) -> bool:
+        if self.range_timeout_s <= 0:
+            return True
+        return self._last_range_receive is not None and now - self._last_range_receive <= self.range_timeout_s
+
     def link_fault(self, now: float) -> str:
         if self._last_odo_receive is None:
             return 'NO_DATA'
         if now - self._last_odo_receive > self.odo_timeout_s:
             return 'LINK_LOST'
+        if not self.ranges_fresh(now):
+            return 'RANGES_LOST'
         return ''
 
     # ---- lines from the Mega ----
@@ -139,6 +150,7 @@ class BridgeCore:
             return self._handle_odo(message, receive_time)
         if isinstance(message, Rng):
             stamp = self.clock.stamp(message.t_ms, receive_time)
+            self._last_range_receive = receive_time
             samples = []
             for name, reading in zip(protocol.RANGE_NAMES, message.ranges_m):
                 value = self.range_filters[name].update(reading, stamp)

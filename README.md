@@ -5,7 +5,8 @@ Design, spec sheet and checkpoints: [PLAN.md](PLAN.md).
 ## Status (13 November 2026)
 
 Written without access to the robot. The workspace builds under ROS 2 Humble and the whole
-mission runs against a simulated robot; nothing has run on the Jetson or on the Mega yet.
+mission runs against a simulated robot, on a laptop and on the team's Jetson Nano (in Docker).
+Nothing has run with the real cameras, the Mega or the motors yet.
 
 | Part | State |
 |---|---|
@@ -26,14 +27,16 @@ obstacles (the simulated ultrasonics see nothing), the classifier, the wake word
 cd ros2_ws && python3 -m pytest                      # needs numpy, opencv, pyyaml, pyserial, pytest
 cd firmware/nontok_ssf_mega && pio run && pio test -e native
 tools/sim_in_docker.sh bolt                          # needs Docker: builds, launches, runs one simulated mission
+NONTOK_DOCKER_ARGS="--cpus 1.5" tools/sim_in_docker.sh bolt   # the same on a slow computer, like the Jetson Nano
 ```
 
 ## First session with hardware
 
 Follow PLAN.md section 8 from CP0. In short:
 
-1. Jetson: install the packages in PLAN.md 13.3, install `ros2_ws/src/nontok_bringup/system/99-nontok.rules`,
-   then `cd ros2_ws && colcon build --symlink-install`.
+1. Jetson (an original Nano on Ubuntu 18.04, so ROS 2 runs in Docker only; PLAN.md 14.4): load the
+   `nontok-dev` image, install `ros2_ws/src/nontok_bringup/system/99-nontok.rules` on the host,
+   then inside the container `cd ros2_ws && colcon build --symlink-install`.
    Keep numpy below 2 (`pip3 install 'numpy<2' onnxruntime`): the system OpenCV breaks with numpy 2.
    `pupil-apriltags` had no ready-made arm64 package in the container; if pip cannot install it on the
    Jetson the detector uses OpenCV's AprilTag support instead.

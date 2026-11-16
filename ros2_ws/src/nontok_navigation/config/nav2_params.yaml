@@ -14,7 +14,7 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
-    controller_frequency: 20.0
+    controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
@@ -35,48 +35,56 @@ controller_server:
       yaw_goal_tolerance: 0.25
       stateful: true
     FollowPath:
-      plugin: nav2_mppi_controller::MPPIController
+      # DWB, not MPPI: the packaged MPPI controller dies with an illegal instruction on the
+      # Jetson Nano's Cortex-A57 (found 16 November 2026), and DWB is much lighter.
+      # The rotation shim turns the robot on the spot to face a path that starts behind or
+      # beside it; DWB alone sat still at the pickup point when the station was behind it.
+      plugin: nav2_rotation_shim_controller::RotationShimController
+      primary_controller: dwb_core::DWBLocalPlanner
+      angular_dist_threshold: 0.6
+      forward_sampling_distance: 0.4
+      rotate_to_heading_angular_vel: 0.8
+      max_angular_accel: 1.5
+      simulate_ahead_time: 1.0
+      debug_trajectory_details: false
       # Forward, turn, and a slow sidestep. The sidestep is what lets the robot settle on a
-      # goal it has arrived beside; without it the simulated robot stalled 0.25 m to one side.
-      # The side ultrasonics cover the direction of a sidestep.
-      motion_model: Omni
-      time_steps: 40
-      model_dt: 0.05
-      batch_size: 1000               # lower this first if the 20 Hz loop is missed
-      iteration_count: 1
-      vx_std: 0.15
-      vy_std: 0.05
-      wz_std: 0.3
-      vx_max: 0.25
-      vx_min: 0.0                    # never reverse: nothing senses behind the robot
-      vy_max: 0.08
-      wz_max: 0.8
-      prune_distance: 1.2
-      transform_tolerance: 0.2
-      temperature: 0.3
-      gamma: 0.015
-      visualize: false
-      critics: [ConstraintCritic, ObstaclesCritic, GoalCritic, GoalAngleCritic, PathAlignCritic,
-                PathFollowCritic, PathAngleCritic, PreferForwardCritic]
-      ConstraintCritic: {enabled: true, cost_power: 1, cost_weight: 4.0}
-      GoalCritic: {enabled: true, cost_power: 1, cost_weight: 5.0, threshold_to_consider: 0.6}
-      GoalAngleCritic: {enabled: true, cost_power: 1, cost_weight: 3.0, threshold_to_consider: 0.3}
-      PreferForwardCritic: {enabled: true, cost_power: 1, cost_weight: 5.0, threshold_to_consider: 0.3}
-      ObstaclesCritic:
-        enabled: true
-        cost_power: 1
-        repulsion_weight: 1.5
-        critical_weight: 20.0
-        consider_footprint: true
-        collision_cost: 10000.0
-        collision_margin_distance: 0.08
-        near_goal_distance: 0.4
-      PathAlignCritic: {enabled: true, cost_power: 1, cost_weight: 10.0, max_path_occupancy_ratio: 0.05,
-                        trajectory_point_step: 3, threshold_to_consider: 0.4, offset_from_furthest: 10}
-      PathFollowCritic: {enabled: true, cost_power: 1, cost_weight: 5.0, offset_from_furthest: 5,
-                         threshold_to_consider: 0.6}
-      PathAngleCritic: {enabled: true, cost_power: 1, cost_weight: 2.0, offset_from_furthest: 4,
-                        threshold_to_consider: 0.4, max_angle_to_furthest: 1.0}
+      # goal it has arrived beside. The side ultrasonics cover the direction of a sidestep.
+      min_vel_x: 0.0                 # never reverse: nothing senses behind the robot
+      max_vel_x: 0.25
+      min_vel_y: -0.08
+      max_vel_y: 0.08
+      max_vel_theta: 0.8
+      min_speed_xy: 0.0
+      max_speed_xy: 0.25
+      min_speed_theta: 0.0
+      acc_lim_x: 0.3
+      acc_lim_y: 0.3
+      acc_lim_theta: 1.5
+      decel_lim_x: -0.5
+      decel_lim_y: -0.5
+      decel_lim_theta: -2.0
+      vx_samples: 10
+      vy_samples: 5
+      vtheta_samples: 16
+      sim_time: 1.5
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.3
+      xy_goal_tolerance: 0.20
+      trans_stopped_velocity: 0.05
+      short_circuit_trajectory_evaluation: true
+      stateful: true
+      critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
 
 local_costmap:
   local_costmap:
@@ -103,7 +111,11 @@ local_costmap:
         input_sensor_type: VARIABLE
         phi: 1.2
         inflate_cone: 1.0
-        no_readings_timeout: 2.0
+        # 0 = off. In this Nav2 release a single gap longer than the timeout (a slow start
+        # is enough) marks the layer "not current" for good, and the controller then waits
+        # for ever without an error. The base bridge does the job instead: it sends zero
+        # velocity and reports RANGES_LOST when the ultrasonics go quiet for 1 s.
+        no_readings_timeout: 0.0
         clear_threshold: 0.2
         mark_threshold: 0.8
         clear_on_max_reading: true
