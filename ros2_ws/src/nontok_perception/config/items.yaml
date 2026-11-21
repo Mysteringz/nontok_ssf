@@ -1,34 +1,22 @@
 # Which station each item type goes to (PLAN.md section 7.4).
-# PLACEHOLDER LIST: the team must fix the demo items (3-5 types per station). The names here
-# must match the class folder names used for training. "empty" needs no entry.
+# Demo items fixed 2026-11-21. The names must match the class folder names used for training
+# (training/video: videos/<session>/<item>.mkv). "empty" needs no entry.
 items:
+  led: electrical
   resistor: electrical
-  capacitor: electrical
-  jumper_wire: electrical
   bolt: mechanical
-  nut: mechanical
-  bracket: mechanical
-  wire_offcut: scraps
-  solder_blob: scraps
-  screwdriver: tools
-  pliers: tools
-  wire_stripper: tools
+  multimeter: tools
+# Anything else (or a low-confidence answer) is "unknown": the mission takes it to the
+# "unknown" station (mission.yaml unknown_station) for a person to sort by hand.
 
 # ---- For the zero-shot model only (ClipZeroShot); the trained model ignores this. ----
 # What each item looks like, in plain words. Several phrases per item are averaged. After
 # editing, run training/build_item_prompts.py on a PC and copy items_clip.npz to the robot.
 descriptions:
+  led: [an LED, a small light-emitting diode with two wire legs, a 5 mm LED with a coloured plastic dome]
   resistor: [a resistor, a small electronic resistor with coloured bands and two wire legs]
-  capacitor: [a capacitor, a small cylindrical electrolytic capacitor with two legs, a ceramic capacitor]
-  jumper_wire: [a jumper wire, a breadboard jumper cable with pin connectors]
   bolt: [a bolt, a metal bolt, a metal screw]
-  nut: [a hex nut, a small metal nut for a bolt]
-  bracket: [a metal bracket, an L-shaped metal angle bracket]
-  wire_offcut: [a short offcut of electrical wire, a scrap piece of cut wire]
-  solder_blob: [a blob of solder, a small lump of waste solder]
-  screwdriver: [a screwdriver]
-  pliers: [a pair of pliers]
-  wire_stripper: [a wire stripper tool, a pair of wire strippers]
+  multimeter: [a multimeter, a handheld digital multimeter with test leads, a red digital multimeter]
 # Things the camera may see that are not items. A picture that fits one of these best is
 # reported as "unknown".
 not_items:

@@ -14,6 +14,7 @@ mission_node:
     dump_settle_s: 1.0
     dump_repeats: 1
     localization_grace_s: 5.0
+    unknown_station: unknown     # unidentified items go here for manual sorting ('' = back to the dock)
     dock_requires_charge: false  # set true once the charge-sense divider is wired (firmware CHARGE_SENSE_FITTED)
     charge_threshold_v: 4.0
     wait_for_nav2: true

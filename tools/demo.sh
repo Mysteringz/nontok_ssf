@@ -2,7 +2,7 @@
 # A demo on this Mac with no robot: the whole software stack runs in Docker against a simulated
 # robot, and the live dashboard opens in the browser. Nothing here touches the Jetson.
 #
-#   tools/demo.sh [item]     start it and run one mission (item = bolt, resistor, pliers, wire_offcut ...)
+#   tools/demo.sh [item]     start it and run one mission (item = led, resistor, bolt, multimeter)
 #   tools/demo.sh busy [item]   the same in a room with two tables and two people walking about
 #   tools/demo.sh voice      with it running: say "Nontok" to this Mac (or press Enter) to call the robot,
 #                            and hear its answers on this Mac's speakers. Ctrl-C to leave.

@@ -136,7 +136,7 @@ def test_vote():
 
 def test_items_file_maps_to_known_stations():
     items = load_items(str(pathlib.Path(__file__).parents[1] / 'config' / 'items.yaml'))
-    assert items and set(items.values()) == {'electrical', 'mechanical', 'scraps', 'tools'}
+    assert items and set(items.values()) == {'electrical', 'mechanical', 'tools'}
 
 
 def test_clip_preprocess_gives_a_normalised_square_from_any_shape():

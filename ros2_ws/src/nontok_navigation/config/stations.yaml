@@ -12,5 +12,5 @@ stations:
   pickup:     {tag_ids: [2, 3],   standoff_m: 0.50, approach_m: 0.90}
   electrical: {tag_ids: [10, 11], standoff_m: 0.35, approach_m: 0.90}
   mechanical: {tag_ids: [12, 13], standoff_m: 0.35, approach_m: 0.90}
-  scraps:     {tag_ids: [14, 15], standoff_m: 0.35, approach_m: 0.90}
+  unknown:    {tag_ids: [14, 15], standoff_m: 0.35, approach_m: 0.90}   # items the classifier cannot name: sorted by hand
   tools:      {tag_ids: [16, 17], standoff_m: 0.35, approach_m: 0.90}

@@ -3,7 +3,7 @@
 #
 #   tools/mac_viz.sh              connect to the robot's dashboard and open it
 #   tools/mac_viz.sh sim [item]   first start a SIMULATED robot on the Jetson and run one mission
-#                                 (nothing moves; item = bolt, resistor, pliers, wire_offcut ...)
+#                                 (nothing moves; item = led, resistor, bolt, multimeter)
 #   tools/mac_viz.sh stop         close the connection (and stop a simulation started from here)
 #
 # The dashboard is part of the robot's software (tools/jetson.sh launch on the Jetson). This

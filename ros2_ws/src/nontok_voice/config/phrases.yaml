@@ -6,6 +6,7 @@ phrases:
   place_item: "Please put the item in my tray."
   reposition: "I can't tell what that is. Please move it a little, or try something else."
   item: "That's {item}. I'll take it to the {station} station."   # one file per item in items.yaml
+  item_UNKNOWN_ITEM: "I don't know what this is. I'll take it to be sorted by hand."
   no_item: "Nothing to carry. I'm going back."
   delivered: "Here it goes."
   going_home: "All done. Heading back to my dock."
@@ -16,8 +17,4 @@ phrases:
 
 # How an item is said. Items not listed are read from their name with "a" in front.
 spoken_items:
-  jumper_wire: a jumper wire
-  wire_offcut: a wire offcut
-  solder_blob: a blob of solder
-  wire_stripper: a wire stripper
-  pliers: a pair of pliers
+  led: an LED
