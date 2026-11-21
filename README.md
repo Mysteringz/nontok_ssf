@@ -84,6 +84,7 @@ tools/jetson.sh launch                                 # the real robot
 firmware/nontok_ssf_mega/   Mega firmware (PlatformIO)
 ros2_ws/src/                ten ROS 2 packages; each keeps its logic in plain Python modules with tests
 training/                   dataset capture, training, export and scoring for the item classifier
+  video/                    item classifier from laptop videos: record, extract, train, test
 tools/                      preflight check, mission log report, bag recording, simulated mission
 docker/                     ROS 2 Humble image for building and simulating on a laptop
 ```
