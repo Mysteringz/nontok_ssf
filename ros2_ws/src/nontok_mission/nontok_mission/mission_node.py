@@ -48,16 +48,23 @@ def main(args=None):
     mission = Mission(RosRobotApi(io, navigator, charge_threshold), cfg, log)
     state_pub = io.create_publisher(MissionState, 'mission/state', 5)
     log({'event': 'start'})
+    published, published_at = None, 0.0
     try:
         while rclpy.ok():
             if io.reset_flag:
                 io.reset_flag = False
                 mission.reset()
-            mission.tick(time.monotonic())
-            msg = MissionState()
-            msg.header.stamp = io.get_clock().now().to_msg()
-            msg.state, msg.detail = mission.state, mission.detail
-            state_pub.publish(msg)
+            now = time.monotonic()
+            mission.tick(now)
+            # On every change, otherwise once a second: each listener is a Python node, and
+            # ten messages a second cost each of them a slice of a Jetson Nano core.
+            current = (mission.state, mission.detail)
+            if current != published or now - published_at >= 1.0:
+                published, published_at = current, now
+                msg = MissionState()
+                msg.header.stamp = io.get_clock().now().to_msg()
+                msg.state, msg.detail = current
+                state_pub.publish(msg)
             time.sleep(0.1)
     except KeyboardInterrupt:
         pass

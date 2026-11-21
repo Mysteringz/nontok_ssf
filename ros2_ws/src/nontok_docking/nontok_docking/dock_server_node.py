@@ -54,6 +54,7 @@ class DockServer(Node):
 
         self.odom = PoseBuffer()
         self.front_range = None
+        self.leave_forward = False   # True after backing in to a station: leaving is then forward
         self.charge_v = 0.0
         self.lock = threading.Lock()
         self.controller = None       # set while an action runs
@@ -139,7 +140,7 @@ class DockServer(Node):
     def config_for(self, station) -> DockConfig:
         prefix = 'dock_' if station.is_dock else ''
         return DockConfig(
-            standoff_m=station.standoff_m, lateral_offset_m=station.lateral_offset_m,
+            standoff_m=station.standoff_m, lateral_offset_m=station.lateral_offset_m, back_in=station.back_in,
             pre_distance_m=self.value('pre_distance_m'),
             approach_speed=self.value('approach_speed'), final_speed=self.value('final_speed'),
             max_yaw_rate=self.value('max_yaw_rate'), gain_forward=self.value('gain_forward'),
@@ -163,6 +164,7 @@ class DockServer(Node):
         left = self.tag_map.get(station.left_tag)
         pair = pair_map(station.left_tag, station.right_tag, tag_spacing(station, self.tag_map), left.size, left.z)
         controller = DockController(self.config_for(station), goal_handle.request.require_charge)
+        self.leave_forward = station.back_in     # which way is away from this station (see on_undock)
         with self.lock:
             self.controller, self.pair = controller, pair
             self.worst_age, self.dropped, self.unsolved, self.unmatched = 0.0, 0, 0, 0
@@ -228,7 +230,7 @@ class DockServer(Node):
             if math.hypot(pose[0] - start[0], pose[1] - start[1]) >= distance:
                 response.success = True
                 break
-            self.publish(vx=-speed)
+            self.publish(vx=speed if self.leave_forward else -speed)
             time.sleep(0.05)
         self.publish()
         if not response.success:

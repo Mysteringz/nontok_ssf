@@ -14,7 +14,10 @@ from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
-CAMERAS = {'front_left': 10.0, 'front_right': 10.0, 'rear': 5.0}   # name: detections per second
+# name: detections per second. Kept low for the Jetson Nano (see detector.yaml); the localiser
+# uses at most 5 fixes per second from a camera anyway.
+# (If a station is ever made back_in in stations.yaml, give the rear camera 6 and one front 3.)
+CAMERAS = {'front_left': 6.0, 'front_right': 6.0, 'rear': 3.0}
 
 
 def generate_launch_description():
@@ -39,7 +42,8 @@ def generate_launch_description():
                         {'camera_name': name, 'device': '/dev/cam_' + name, 'rate_hz': rate}],
             condition=IfCondition(cameras), output='screen', respawn=True, respawn_delay=3.0))
     actions += [
-        Node(package='nontok_localization', executable='tag_localizer',
+        # A little below the control nodes: position fixes can wait a moment, steering cannot.
+        Node(package='nontok_localization', executable='tag_localizer', prefix='nice -n 5',
              parameters=[os.path.join(config, 'localization.yaml'),
                          {'tags_file': os.path.join(config, 'tags.yaml'),
                           'cameras_dir': os.path.join(config, 'cameras'),

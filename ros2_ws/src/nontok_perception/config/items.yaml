@@ -13,3 +13,26 @@ items:
   screwdriver: tools
   pliers: tools
   wire_stripper: tools
+
+# ---- For the zero-shot model only (ClipZeroShot); the trained model ignores this. ----
+# What each item looks like, in plain words. Several phrases per item are averaged. After
+# editing, run training/build_item_prompts.py on a PC and copy items_clip.npz to the robot.
+descriptions:
+  resistor: [a resistor, a small electronic resistor with coloured bands and two wire legs]
+  capacitor: [a capacitor, a small cylindrical electrolytic capacitor with two legs, a ceramic capacitor]
+  jumper_wire: [a jumper wire, a breadboard jumper cable with pin connectors]
+  bolt: [a bolt, a metal bolt, a metal screw]
+  nut: [a hex nut, a small metal nut for a bolt]
+  bracket: [a metal bracket, an L-shaped metal angle bracket]
+  wire_offcut: [a short offcut of electrical wire, a scrap piece of cut wire]
+  solder_blob: [a blob of solder, a small lump of waste solder]
+  screwdriver: [a screwdriver]
+  pliers: [a pair of pliers]
+  wire_stripper: [a wire stripper tool, a pair of wire strippers]
+# Things the camera may see that are not items. A picture that fits one of these best is
+# reported as "unknown".
+not_items:
+  empty: [an empty tray, an empty box, a plain empty surface]
+  hand: [a human hand, a person's hand reaching in]
+  scene: [a room, a laboratory with workbenches, a ceiling with lights, an office]
+  person: [a person, a person's face, a person's arm or clothing]

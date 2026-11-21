@@ -186,3 +186,23 @@ def test_pose_buffer_interpolates():
     assert (x, y) == pytest.approx((0.5, 1.0))
     assert abs(abs(yaw) - math.pi) < 0.05          # interpolates across the +/-pi seam
     assert buffer.at(0.5) is None and buffer.at(3.0) is None
+
+
+def test_backs_in_to_a_station_for_a_rear_tipping_tray():
+    cfg = DockConfig(back_in=True)
+    for start in ((0.90, 0.0, 0.0), (0.95, 0.12, math.radians(10)), (0.85, -0.12, -math.radians(8))):
+        sim = Sim(start)
+        controller = DockController(cfg)
+        reversed_only = []
+        original = controller.step
+
+        def recording(*args, **kwargs):
+            command = original(*args, **kwargs)
+            reversed_only.append(command[0] <= 1e-9)
+            return command
+        controller.step = recording
+        sim.run(controller)
+        assert controller.success, (controller.phase, controller.message)
+        x, y, yaw = sim.robot_in_station()
+        assert abs(x - cfg.standoff_m) <= 0.025 and abs(y) <= 0.020 and abs(wrap(yaw)) <= math.radians(3.5)
+        assert sum(reversed_only) > 0.95 * len(reversed_only)      # it came in backwards

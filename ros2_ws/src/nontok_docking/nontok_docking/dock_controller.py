@@ -7,7 +7,8 @@ station frame. The robot therefore moves smoothly between measurements and can f
 last few centimetres on odometry when the tags leave the image.
 
 Station frame: origin midway between the two tags, x pointing out of the wall. The robot's
-target is on that x axis (plus an optional sideways offset), facing the tags.
+target is on that x axis (plus an optional sideways offset), facing the tags - or with its
+back to them (back_in), for a tray that tips out over the rear.
 """
 import bisect
 import math
@@ -24,6 +25,7 @@ ACQUIRE, APPROACH, FINAL, SETTLE, CHARGE, DONE, FAILED = (
 class DockConfig:
     standoff_m: float = 0.35
     lateral_offset_m: float = 0.0
+    back_in: bool = False                 # reverse in and stop with the back to the tags
     pre_distance_m: float = 0.15          # APPROACH stops this far short of the standoff
     # speed limits
     approach_speed: float = 0.08
@@ -156,7 +158,8 @@ class DockController:
 
     def _target(self, extra: float) -> Pose2D:
         cfg = self.cfg
-        return compose(self._station, (cfg.standoff_m + extra, cfg.lateral_offset_m, math.pi))
+        return compose(self._station, (cfg.standoff_m + extra, cfg.lateral_offset_m,
+                                       0.0 if cfg.back_in else math.pi))
 
     def _within_final_tolerance(self, fraction: float = 1.0) -> bool:
         cfg = self.cfg
@@ -176,7 +179,9 @@ class DockController:
         if now - self._start > cfg.total_timeout_s:
             self._enter(FAILED, now, 'timed out in %s' % self.phase)
             return (0.0, 0.0, 0.0)
-        if front_range is not None and front_range < cfg.min_front_range_m and self.phase in (APPROACH, FINAL):
+        # Backing in, the front ultrasonic points away from the station: nothing senses behind.
+        if (not cfg.back_in and front_range is not None and front_range < cfg.min_front_range_m
+                and self.phase in (APPROACH, FINAL)):
             self._enter(FAILED, now, 'something %.0f mm ahead' % (front_range * 1000))
             return (0.0, 0.0, 0.0)
 

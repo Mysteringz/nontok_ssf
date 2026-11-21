@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nontok live</title>
+<style>
+  :root { --bg:#11151a; --panel:#1a2028; --line:#2b3440; --text:#e6ebf0; --dim:#8b97a5; --ok:#3fb97a; --warn:#e2a93b; --bad:#e5604f; --accent:#4ea1f3; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f3f5f7; --panel:#ffffff; --line:#d9dee4; --text:#17202a; --dim:#5d6975; --ok:#1e8e55; --warn:#b07a0c; --bad:#c7402f; --accent:#1c6fd1; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display:flex; align-items:baseline; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  #state { font-size:22px; font-weight:700; }
+  #detail, #display { color:var(--dim); }
+  #link { margin-left:auto; font-size:12px; padding:2px 8px; border-radius:10px; background:var(--line); }
+  main { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:12px; padding:12px 16px; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; min-width:0; }
+  section h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 8px; font-weight:600; }
+  canvas { width:100%; height:auto; display:block; border-radius:4px; background:#888; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .tile { border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  .tile b { display:block; font-size:11px; color:var(--dim); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+  .tile span { font-size:15px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); } .stale { opacity:.45; }
+  .cams { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .cam { position:relative; background:#000; border-radius:4px; aspect-ratio:16/9; overflow:hidden; }
+  .cam img { width:100%; height:100%; object-fit:contain; display:block; }
+  .cam label { position:absolute; left:6px; top:4px; font-size:11px; color:#fff; background:rgba(0,0,0,.55); padding:1px 6px; border-radius:3px; }
+  .list { max-height:220px; overflow:auto; font:12px/1.45 ui-monospace, Menlo, monospace; }
+  .list div { padding:1px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  .col { display:flex; flex-direction:column; gap:12px; min-width:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nontok</h1><span id="state">…</span><span id="detail"></span><span id="display"></span><span id="link">connecting</span>
+</header>
+<main>
+  <div class="col">
+    <section><h2>Map</h2><canvas id="map" width="800" height="600"></canvas></section>
+    <section><h2>Cameras</h2><div class="cams" id="cams"></div></section>
+  </div>
+  <div class="col">
+    <section><h2>Robot</h2><div class="grid" id="tiles"></div></section>
+    <section><h2>Events</h2><div class="list" id="events"></div></section>
+    <section><h2>Warnings and messages</h2><div class="list" id="log"></div></section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const CAMS = ['front_left', 'front_right', 'rear', 'tray'];
+let layout = null, mapImage = new Image(), trail = [];
+mapImage.src = '/map.png';
+fetch('/layout').then(r => r.json()).then(l => { layout = l; });
+$('cams').innerHTML = CAMS.map(c => `<div class="cam"><img id="cam_${c}" alt="" style="visibility:hidden" onload="this.style.visibility='visible'" onerror="this.style.visibility='hidden'"><label>${c.replace('_', ' ')}</label></div>`).join('');
+
+function tile(name, text, cls, age, limit) {
+  const stale = age === undefined || age > (limit || 3);
+  return `<div class="tile ${stale ? 'stale' : ''}"><b>${name}</b><span class="${cls || ''}">${age === undefined ? 'no data' : text}</span></div>`;
+}
+function hhmmss(t) { return new Date(t * 1000).toLocaleTimeString([], {hour12: false}); }
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c])); }
+
+let sim = null, hits = [], boot = null;
+function drawMap(v, age) {
+  const c = $('map'), g = c.getContext('2d');
+  if (!layout || !layout.width) return;
+  const scale = Math.min(6, Math.floor(800 / layout.width)) || 1;
+  if (c.width !== layout.width * scale) { c.width = layout.width * scale; c.height = layout.height * scale; }
+  g.imageSmoothingEnabled = false;
+  g.drawImage(mapImage, 0, 0, c.width, c.height);
+  const X = x => (x - layout.origin[0]) / layout.resolution * scale;
+  const Y = y => c.height - (y - layout.origin[1]) / layout.resolution * scale;
+  const M = m => m / layout.resolution * scale;
+  g.font = '11px sans-serif'; g.textAlign = 'center';
+  for (const t of layout.tags) {
+    const seen = CAMS.some(cam => (v['tags_' + cam] || []).includes(t.id) && age['tags_' + cam] < 1.5);
+    g.fillStyle = seen ? '#22c55e' : '#2563eb';
+    g.fillRect(X(t.x) - 3, Y(t.y) - 3, 6, 6);
+  }
+  // station names, nudged from the wall toward the middle of the room, with a light outline
+  const cx = layout.origin[0] + layout.width * layout.resolution / 2, cy = layout.origin[1] + layout.height * layout.resolution / 2;
+  g.font = '600 12px sans-serif'; g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.9)'; g.fillStyle = '#0f172a';
+  for (const s of layout.stations) {
+    const d = Math.hypot(cx - s.x, cy - s.y) || 1, lx = X(s.x + 0.3 * (cx - s.x) / d), ly = Y(s.y + 0.3 * (cy - s.y) / d) + 4;
+    g.strokeText(s.name, lx, ly); g.fillText(s.name, lx, ly);
+  }
+  g.font = '600 11px sans-serif'; g.fillStyle = '#fff';
+  for (const t of layout.tables || []) {          // simulated tables (already black on the map picture)
+    g.fillText(t.name, X((t.rect[0] + t.rect[2]) / 2), Y((t.rect[1] + t.rect[3]) / 2) + 4);
+  }
+  for (const p of (sim && sim.people) || []) {   // simulated people
+    g.fillStyle = 'rgba(124,58,237,.85)'; g.beginPath(); g.arc(X(p[0]), Y(p[1]), M(p[2]), 0, 2 * Math.PI); g.fill();
+    g.fillStyle = '#fff'; g.fillText('person', X(p[0]), Y(p[1]) + 4);
+  }
+  // what the ultrasonics have detected in the last few seconds
+  const nowMs = Date.now();
+  hits = hits.filter(h => nowMs - h[2] < 6000);
+  for (const h of hits) {
+    g.fillStyle = `rgba(220,38,38,${(1 - (nowMs - h[2]) / 6000).toFixed(2)})`;
+    g.fillRect(X(h[0]) - 2.5, Y(h[1]) - 2.5, 5, 5);
+  }
+  if (v.path && age.path < 30) {
+    g.strokeStyle = '#f59e0b'; g.lineWidth = 2; g.beginPath();
+    v.path.forEach((p, i) => i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1])));
+    g.stroke();
+  }
+  if (!v.pose) return;
+  const [x, y, yaw] = v.pose;
+  if (!trail.length || Math.hypot(trail[trail.length - 1][0] - x, trail[trail.length - 1][1] - y) > 0.03) { trail.push([x, y]); if (trail.length > 600) trail.shift(); }
+  g.strokeStyle = 'rgba(220,38,38,.55)'; g.lineWidth = 1.5; g.beginPath();
+  trail.forEach((p, i) => i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1])));
+  g.stroke();
+  // ultrasonic beams: [name, mounting angle from straight ahead, degrees]
+  for (const [name, deg] of [['front', 0], ['left45', 45], ['right45', -45], ['left', 90], ['right', -90]]) {
+    const r = v['range_' + name];
+    if (r === undefined || age['range_' + name] > 2) continue;
+    const a = yaw + deg * Math.PI / 180;
+    if (r < 1.45 && age['range_' + name] < 0.5) { hits.push([x + r * Math.cos(a), y + r * Math.sin(a), Date.now()]); if (hits.length > 400) hits.shift(); }
+    g.strokeStyle = r < 0.4 ? '#dc2626' : r < 1.45 ? '#d97706' : 'rgba(22,163,74,.5)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(X(x), Y(y)); g.lineTo(X(x + r * Math.cos(a)), Y(y + r * Math.sin(a))); g.stroke();
+  }
+  g.save(); g.translate(X(x), Y(y)); g.rotate(-yaw);
+  g.fillStyle = age.pose > 2 ? '#94a3b8' : '#dc2626';
+  g.fillRect(-M(0.17), -M(0.14), M(0.34), M(0.28));
+  g.fillStyle = '#fff'; g.beginPath(); g.moveTo(M(0.15), 0); g.lineTo(M(0.02), -M(0.08)); g.lineTo(M(0.02), M(0.08)); g.fill();
+  g.restore();
+}
+
+function render(s) {
+  sim = s.sim;
+  if (boot && s.boot && s.boot !== boot) { location.reload(); return; }   // the robot software restarted: new map
+  boot = s.boot || boot;
+  const v = s.values, a = s.age, r = s.rate;
+  const m = v.mission || {};
+  $('state').textContent = m.state || 'no mission node';
+  $('state').className = m.state === 'FAULT' ? 'bad' : (a.mission > 3 ? 'stale' : '');
+  $('detail').textContent = m.detail || '';
+  $('display').textContent = v.display ? '“' + v.display + '”' : '';
+  const b = v.base || {}, l = v.localization || {}, t = v.tray || {}, sys = v.system || {};
+  const vel = v.velocity || [0, 0, 0], pose = v.pose || [0, 0, 0];
+  let h = '';
+  h += tile('Motors', b.armed ? 'ARMED' : 'disarmed', b.armed ? 'warn' : '', a.base);
+  h += tile('Base fault', b.fault || 'none', b.fault ? 'bad' : 'ok', a.base);
+  h += tile('Battery', (b.battery_v || 0) > 0.1 ? b.battery_v.toFixed(1) + ' V' : 'not fitted', '', a.base);
+  h += tile('Position', `${pose[0].toFixed(2)}, ${pose[1].toFixed(2)} m, ${(pose[2] * 57.3).toFixed(0)}°`, '', a.pose);
+  h += tile('Speed', `${vel[0].toFixed(2)} m/s, ${vel[1].toFixed(2)} side, ${(vel[2] * 57.3).toFixed(0)}°/s`, '', a.velocity);
+  h += tile('Localisation', l.healthy ? 'healthy' : 'NOT healthy', l.healthy ? 'ok' : 'bad', a.localization);
+  h += tile('Last tag fix', `${l.seconds_since_fix} s, ${l.metres_since_fix} m ago`, '', a.localization);
+  for (const cam of CAMS.slice(0, 3)) {
+    const ids = v['tags_' + cam];
+    h += tile('Tags ' + cam.replace('_', ' '), ids && ids.length ? ids.join(', ') : 'none', ids && ids.length ? 'ok' : '', a['tags_' + cam]);
+  }
+  for (const n of ['front', 'left45', 'right45', 'left', 'right']) {
+    const d = v['range_' + n];
+    h += tile('Range ' + n, d === undefined ? '' : (d >= 1.49 ? 'clear' : d.toFixed(2) + ' m'), d < 0.4 ? 'bad' : '', a['range_' + n], 2);
+  }
+  h += tile('Tray', `${t.state}${t.stable ? ', steady' : ''}`, t.state === 'OCCUPIED' ? 'warn' : '', a.tray);
+  h += tile('Tray tilt', (b.tray_deg || 0).toFixed(0) + '°', '', a.base);
+  h += tile('Wake word', a.wake === undefined ? 'not heard yet' : Math.round(a.wake) + ' s ago', a.wake < 5 ? 'ok' : '', a.wake === undefined ? 0 : 0, 1e9);
+  h += tile('Computer load', sys.load1 === undefined || sys.load1 === null ? '' : sys.load1.toFixed(1) + ' of 4', sys.load1 > 3.5 ? 'bad' : sys.load1 > 2.5 ? 'warn' : 'ok', a.system);
+  h += tile('Temperature', sys.temp_c == null ? 'n/a' : sys.temp_c + ' °C', sys.temp_c > 70 ? 'bad' : '', a.system);
+  h += tile('Memory', `${sys.mem_used_mb} / ${sys.mem_total_mb} MB`, '', a.system);
+  h += tile('Odometry rate', (r.pose || 0).toFixed(0) + ' Hz', (r.pose || 0) < 15 ? 'warn' : '', a.pose);
+  $('tiles').innerHTML = h;
+  $('events').innerHTML = s.events.slice().reverse().map(e => `<div>${hhmmss(e.t)}  ${esc(e.text)}</div>`).join('') || '<div>nothing yet</div>';
+  $('log').innerHTML = s.log.slice().reverse().map(e => `<div class="${e.level === 'ERROR' ? 'bad' : e.level === 'WARN' ? 'warn' : ''}">${hhmmss(e.t)}  ${esc(e.source)}: ${esc(e.text)}</div>`).join('') || '<div>nothing yet</div>';
+  drawMap(v, a);
+  for (const cam of CAMS) $('cam_' + cam).parentElement.classList.toggle('stale', !(a['image_' + cam] < 3));
+}
+
+let failures = 0;
+async function poll() {
+  try {
+    const s = await (await fetch('/state', {cache: 'no-store'})).json();
+    failures = 0; $('link').textContent = 'live'; $('link').className = 'ok';
+    render(s);
+  } catch (e) {
+    if (++failures > 3) { $('link').textContent = 'no connection to the robot'; $('link').className = 'bad'; }
+  }
+  setTimeout(poll, 250);
+}
+poll();
+setInterval(() => { for (const cam of CAMS) $('cam_' + cam).src = '/cam/' + cam + '?t=' + Date.now(); }, 600);
+</script>
+</body>
+</html>

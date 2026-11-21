@@ -271,3 +271,67 @@ def test_no_movement_without_fresh_ultrasonic_readings():
     assert core.velocity_line(1.5) == zero              # readings stopped more than 1 s ago
     assert not core.ranges_fresh(1.5)
     assert BridgeCore(MecanumParams(), range_timeout_s=0.0).ranges_fresh(5.0)   # check switched off
+
+
+def test_wheel_check_verdicts_and_a_run_against_the_simulated_mega():
+    from nontok_base.wheel_check import judge
+    assert judge([500, 500, -500, -500], [480, -470, -20, -900]) == ['ok', 'wrong sign', 'no counts', 'too many']
+    assert judge([500, -500], [200, -510]) == ['too few', 'ok']
+
+
+# ---- simulated room ----
+def _world(people=()):
+    from nontok_base.sim_world import World
+    sensors = [(0.11, 0.07, math.radians(45)), (0.11, -0.07, math.radians(-45)), (0.13, 0.0, 0.0),
+               (0.0, 0.10, math.radians(90)), (0.0, -0.10, math.radians(-90))]
+    return World([(2.0, -5.0, 2.1, 5.0)], [('table', (-1.0, 0.5, 1.0, 1.0))], list(people), sensors)
+
+
+def test_simulated_ultrasonics_see_walls_tables_and_people():
+    from nontok_base.sim_world import Person
+    left45, right45, front, left, right = _world().ranges_mm(0.0, 0.0, 0.0)
+    assert abs(front - 1870) <= 2          # wall 2.0 m ahead, sensor 0.13 m forward
+    assert abs(left - 400) <= 2            # table edge at y = 0.5, sensor at y = 0.10
+    assert right == -1                     # nothing on the right
+    person = Person('p', [(1.0, 0.0), (1.0, 0.1)], radius=0.2)
+    assert abs(_world([person]).ranges_mm(0.0, 0.0, 0.0)[2] - 670) <= 2
+
+
+def test_simulated_person_walks_but_not_into_the_robot():
+    from nontok_base.sim_world import Person
+    person = Person('p', [(0.0, 0.0), (2.0, 0.0)], speed=0.5)
+    for _ in range(100):                   # 4 s, robot far away
+        person.step(0.04, 10.0, 10.0, 0.16)
+    assert abs(person.x - 2.0) < 0.05
+    person = Person('p', [(0.0, 0.0), (2.0, 0.0)], speed=0.5)
+    world = _world([person])
+    for _ in range(50):                    # robot parked on the path at x = 1
+        world.step(0.04, 1.0, 0.0)
+    assert person.x < 1.0 - 0.16 - 0.20 and world.contacts == 0
+    stopped_at = person.x
+    for _ in range(60):                    # ... after 3 s the person gives up and walks back
+        world.step(0.04, 1.0, 0.0)
+    assert person.x < stopped_at - 0.2 and world.contacts == 0
+
+
+def test_simulated_contact_is_counted_once():
+    world = _world()
+    for _ in range(10):
+        world.step(0.04, 0.0, 0.45)        # 5 cm from the table edge
+    assert world.contacts == 1 and world.touching == 'table'
+
+
+def test_bridge_pose_follows_the_simulated_robot_through_many_turns():
+    """The simulated room is placed by the fake Mega's true pose, the simulated tags by the
+    bridge's; they must not drift apart (they did, by the gyro correction, before)."""
+    mega = FakeMegaCore()
+    mega.gyro_gain = 1.0 / 1.009
+    bridge = BridgeCore(MecanumParams(0.080, 660.0, 0.160), gyro_scale=1.009)
+    mega.feed('ARM')
+    for i in range(5000):                  # 200 s of driving in circles and arcs
+        if i % 5 == 0:
+            mega.feed('VEL 150 %d %d' % (40 if i % 400 < 200 else -40, 700 if i % 1000 < 600 else -500))
+        for line in mega.step():
+            bridge.handle_line(line, mega.t)
+    assert abs(bridge.yaw - mega.yaw) < 0.005      # it was 0.4 rad without the matching gyro
+    assert math.hypot(bridge.x - mega.x, bridge.y - mega.y) < 0.02

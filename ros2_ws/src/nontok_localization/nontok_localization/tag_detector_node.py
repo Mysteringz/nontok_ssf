@@ -10,6 +10,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool
 
 from nontok_interfaces.msg import TagDetection, TagDetectionArray
 
@@ -27,20 +28,28 @@ class TagDetectorNode(Node):
         self.rate_hz = p('rate_hz', 10.0).value
         self.debug = p('debug', False).value
         self.frame_id = 'cam_%s_optical' % self.camera_name
-        cv2.setNumThreads(2)
+        cv2.setNumThreads(1)
         self.detector = TagDetector(
             backend=p('backend', 'auto').value,
             quad_decimate=p('quad_decimate', 2.0).value,
             threads=p('threads', 2).value,
             min_margin=p('min_decision_margin', 50.0).value,
         )
-        self.camera = LatestFrameCamera(device, p('width', 1280).value, p('height', 720).value,
-                                        p('fps', 30).value, exposure if exposure >= 0 else None)
+        # paused: true releases the camera altogether. The rear camera and the tray camera
+        # cannot stream at the same time on the Jetson's single USB 2.0 bus, so the tray
+        # node pauses this detector while it looks at the tray.
+        p('paused', False)
+        self._camera_args = (device, p('width', 1280).value, p('height', 720).value, p('fps', 30).value,
+                             exposure if exposure >= 0 else None)
+        self.camera = LatestFrameCamera(*self._camera_args, gray=True)
         if not self.camera.is_open():
             raise RuntimeError('Cannot open camera %s' % device)
         self.pub = self.create_publisher(TagDetectionArray, 'tags/%s/detections' % self.camera_name, 5)
-        self.debug_pub = self.create_publisher(
-            CompressedImage, 'tags/%s/debug/compressed' % self.camera_name, 1) if self.debug else None
+        # A small picture with the tags outlined, twice a second, while debug is on or while
+        # the dashboard says someone is watching (viz/watching). Otherwise no pictures at all.
+        self.debug_pub = self.create_publisher(CompressedImage, 'tags/%s/debug/compressed' % self.camera_name, 1)
+        self._watched = -1e9
+        self.create_subscription(Bool, 'viz/watching', self._on_watching, 2)
         self._last_debug = 0.0
         self._running = True
         self._thread = threading.Thread(target=self._loop, name='detect', daemon=True)
@@ -51,17 +60,32 @@ class TagDetectorNode(Node):
     def _loop(self) -> None:
         next_time = time.monotonic()
         while self._running and rclpy.ok():
-            rate = self.get_parameter('rate_hz').value   # can be changed while running; 0 pauses
+            rate = self.get_parameter('rate_hz').value   # can be changed while running; 0 idles
+            if self.get_parameter('paused').value:
+                if self.camera is not None:
+                    self.camera.close()
+                    self.camera = None
+                    self.get_logger().info('Paused: camera released')
+                time.sleep(0.1)
+                continue
+            if self.camera is None:
+                camera = LatestFrameCamera(*self._camera_args, gray=True)
+                if not camera.is_open():        # the other user has not let go yet
+                    camera.close()
+                    time.sleep(0.3)
+                    continue
+                self.camera = camera
+                self.get_logger().info('Resumed')
             if rate <= 0:
                 time.sleep(0.2)
                 continue
             now = time.monotonic()
             if now < next_time:
-                time.sleep(min(0.01, next_time - now))
+                time.sleep(min(0.2, next_time - now))   # one sleep, not a poll: Python wake-ups cost the Nano
                 continue
             item = self.camera.read()
             if item is None:
-                time.sleep(0.002)
+                time.sleep(0.005)
                 continue
             next_time = max(next_time + 1.0 / rate, now)
             frame, captured = item
@@ -82,12 +106,16 @@ class TagDetectorNode(Node):
                 msg.detections.append(out)
             self.pub.publish(msg)   # also when empty: shows the camera is alive
 
-            if self.debug_pub is not None and now - self._last_debug > 0.5:
+            if (self.debug or now - self._watched < 3.0) and now - self._last_debug > 0.5:
                 self._last_debug = now
                 self._publish_debug(frame, detections, msg.header)
 
+    def _on_watching(self, msg) -> None:
+        if msg.data:
+            self._watched = time.monotonic()
+
     def _publish_debug(self, frame, detections, header) -> None:
-        view = frame.copy()
+        view = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if frame.ndim == 2 else frame.copy()
         for d in detections:
             points = d.corners.astype(int)
             cv2.polylines(view, [points.reshape(-1, 1, 2)], True, (0, 255, 0), 3)
@@ -105,7 +133,8 @@ class TagDetectorNode(Node):
     def destroy_node(self):
         self._running = False
         self._thread.join(timeout=1.0)
-        self.camera.close()
+        if self.camera is not None:
+            self.camera.close()
         super().destroy_node()
 
 

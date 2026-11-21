@@ -34,6 +34,39 @@ NONTOK_DOCKER_ARGS="--cpus 1.5" tools/sim_in_docker.sh bolt   # the same on a sl
 
 Follow PLAN.md section 8 from CP0. In short:
 
+To watch the robot live from the Mac (map, state, sensors, cameras, events) in a browser:
+
+```
+tools/mac_viz.sh              # connect to the running robot and open the dashboard
+tools/mac_viz.sh sim bolt     # or: start a simulated mission on the Jetson and watch that
+tools/mac_viz.sh stop
+```
+
+Demo without the robot (progress reports):
+
+```
+tools/demo.sh bolt            # on the Mac: simulated mission in Docker, dashboard at localhost:8081
+tools/demo.sh busy bolt       # the same in a room with two tables (on the map) and two walking people (not on it)
+tools/demo.sh voice           # then: say "Nontok" to the Mac (or press Enter); it answers on the Mac's speakers
+tools/demo.sh stop
+tools/jetson.sh camdemo       # on the Jetson: real cameras, wake word and dashboard only - no motors;
+                              # watch with tools/mac_viz.sh
+```
+
+On the Jetson run without the desktop (`sudo systemctl set-default multi-user.target`; back with
+`graphical.target`) and call the robot no sooner than a minute after starting the software.
+
+On the Jetson everything runs through `tools/jetson.sh` (from `~/nontok`):
+
+```
+tools/jetson.sh build                                  # colcon build in the container
+tools/jetson.sh cameras                                # which camera is on which USB port
+tools/jetson.sh run ros2 run nontok_base wheel_check   # FIRST power-on: robot on blocks
+tools/jetson.sh run ros2 run nontok_voice listen --model src/nontok_voice/models/nontok.onnx --device XWF
+tools/jetson.sh launch fake:=true fake_item:=bolt      # whole mission, simulated
+tools/jetson.sh launch                                 # the real robot
+```
+
 1. Jetson (an original Nano on Ubuntu 18.04, so ROS 2 runs in Docker only; PLAN.md 14.4): load the
    `nontok-dev` image, install `ros2_ws/src/nontok_bringup/system/99-nontok.rules` on the host,
    then inside the container `cd ros2_ws && colcon build --symlink-install`.

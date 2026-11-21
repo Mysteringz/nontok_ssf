@@ -1,0 +1,7 @@
+# The robot's voice. The wording is in phrases.yaml.
+speech_node:
+  ros__parameters:
+    # ALSA playback device for aplay, e.g. "plughw:CARD=Device,DEV=0" (list with: aplay -L).
+    # Empty = the first USB speaker found, else the system default.
+    device: ""
+    enabled: true

@@ -137,3 +137,34 @@ def test_vote():
 def test_items_file_maps_to_known_stations():
     items = load_items(str(pathlib.Path(__file__).parents[1] / 'config' / 'items.yaml'))
     assert items and set(items.values()) == {'electrical', 'mechanical', 'scraps', 'tools'}
+
+
+def test_clip_preprocess_gives_a_normalised_square_from_any_shape():
+    from nontok_perception.classifier import CLIP_MEAN, CLIP_STD, clip_preprocess
+    image = np.full((120, 300, 3), 255, dtype=np.uint8)
+    image[:, :, 0] = 0                                     # BGR: no blue, full green and red
+    out = clip_preprocess(image)
+    assert out.shape == (1, 3, 224, 224) and out.dtype == np.float32
+    expected = (np.array([1.0, 1.0, 0.0]) - CLIP_MEAN) / CLIP_STD   # channels come out as RGB
+    assert np.allclose(out[0, :, 100, 100], expected, atol=1e-4)
+
+
+def test_zero_shot_picks_the_closest_description_and_reports_non_items_as_nothing(tmp_path):
+    from nontok_perception.classifier import load_descriptions, zero_shot_scores
+    text = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    scores = zero_shot_scores(np.array([0.1, 2.0, 0.2]), text)
+    assert int(np.argmax(scores)) == 1 and abs(scores.sum() - 1.0) < 1e-9 and scores[1] > 0.99
+    path = tmp_path / 'items.yaml'
+    path.write_text('items:\n  bolt: mechanical\n  jumper_wire: electrical\n'
+                    'descriptions:\n  bolt: [a bolt, a metal screw]\nnot_items:\n  empty: an empty tray\n')
+    assert load_descriptions(str(path)) == {'bolt': ['a bolt', 'a metal screw'], 'jumper_wire': ['jumper wire'],
+                                            '_empty': ['an empty tray']}
+
+
+def test_look_alikes_at_one_station_add_up():
+    from nontok_perception.classifier import pick_by_station
+    stations = {'bolt': 'mechanical', 'nut': 'mechanical', 'resistor': 'electrical'}
+    labels = ['bolt', 'nut', 'resistor', '_empty']
+    item, confidence = pick_by_station(labels, [0.30, 0.35, 0.33, 0.02], stations)
+    assert item == 'nut' and abs(confidence - 0.65) < 1e-9          # resistor had the single highest rival score
+    assert pick_by_station(labels, [0.1, 0.1, 0.1, 0.7], stations) == ('', 0.7)   # an empty tray is no item

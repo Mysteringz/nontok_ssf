@@ -46,6 +46,10 @@ class FakeMegaCore:
         # True pose of the simulated robot (for tests and for simulated sensors).
         self.x = self.y = self.yaw = 0.0
         self.oled = ''
+        # Reading / true turn rate. The real gyro reads 0.9 % low and the bridge corrects for
+        # that (gyro_scale in base.yaml); main() makes the simulated one read low to match.
+        self.gyro_gain = 1.0
+        self._gyro_carry = 0.0
 
     def boot(self) -> List[str]:
         return ['READY NONTOK-SSF 1']
@@ -119,7 +123,13 @@ class FakeMegaCore:
 
         t_ms = int(round(self.t * 1000))
         counts = [int(round(m / self.metres_per_count)) for m in self.wheel_m]
-        out.append('ODO %d %d %d %d %d %d' % (t_ms, *counts, int(round(wz * 1000))))
+        # The gyro reading in whole mrad/s; the rounding error is carried to the next cycle so
+        # that the readings add up to the true turn (otherwise the pose the bridge works out
+        # slowly rotates away from the true one, and from the simulated room).
+        exact = wz * 1000.0 * self.gyro_gain + self._gyro_carry
+        gyro = int(round(exact))
+        self._gyro_carry = exact - gyro
+        out.append('ODO %d %d %d %d %d %d' % (t_ms, *counts, gyro))
         if self.cycle % RNG_EVERY == 0:
             out.append('RNG %d %d %d %d %d %d' % (t_ms, *self.ranges_mm))
         if self.cycle % STA_EVERY == 0:
@@ -150,6 +160,13 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument('--link', default='/tmp/nontok_fake_mega',
                         help='symlink to create for the pseudo-terminal')
     parser.add_argument('--charge-mv', type=int, default=0, help='simulated charger voltage')
+    parser.add_argument('--gyro-scale', type=float, default=1.0,
+                        help="the bridge's gyro_scale: the simulated gyro reads low by this factor")
+    parser.add_argument('--scene', default='', help='tables and walking people (a scene_*.yaml); needs the next two')
+    parser.add_argument('--layout', default='', help='lab_layout.yaml: the walls')
+    parser.add_argument('--robot', default='', help='robot.yaml: where the ultrasonics are')
+    parser.add_argument('--world-file', default='/tmp/nontok_sim_world.json',
+                        help='where the people are, for the dashboard')
     args, _ = parser.parse_known_args(argv)
 
     master, slave = os.openpty()
@@ -162,6 +179,15 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     core = FakeMegaCore()
     core.charge_mv = args.charge_mv
+    core.gyro_gain = 1.0 / args.gyro_scale
+    world = None
+    if args.scene:
+        from .sim_world import load_world, write_snapshot
+        world = load_world(args.scene, args.layout, args.robot)
+        print('Simulated room: %d tables, %d people' % (len(world.tables), len(world.people)), flush=True)
+    elif os.path.exists(args.world_file):
+        os.unlink(args.world_file)
+    cycles = 0
 
     def send(lines: List[str]) -> None:
         for line in lines:
@@ -181,6 +207,15 @@ def main(argv: Optional[List[str]] = None) -> None:
                     send(core.feed(raw.decode('ascii', errors='replace')))
             if time.monotonic() >= next_cycle:
                 next_cycle += PERIOD_S
+                if world is not None:
+                    was = world.contacts
+                    world.step(PERIOD_S, core.x, core.y)
+                    core.ranges_mm = world.ranges_mm(core.x, core.y, core.yaw)
+                    if world.contacts > was:
+                        print('SIMULATION: the robot touched %s' % world.touching, flush=True)
+                    cycles += 1
+                    if cycles % 5 == 0:
+                        write_snapshot(world, args.world_file, time.time())
                 send(core.step())
     except KeyboardInterrupt:
         pass

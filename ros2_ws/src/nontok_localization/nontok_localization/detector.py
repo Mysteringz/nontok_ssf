@@ -1,6 +1,6 @@
 """AprilTag 36h11 detection behind one function, with two interchangeable backends.
 
-- 'pupil': the pupil-apriltags package (the reference AprilTag library). Preferred.
+- 'pupil': the reference AprilTag library, from the pupil-apriltags or dt-apriltags package. Preferred.
 - 'opencv': OpenCV's ArUco module with the AprilTag 36h11 dictionary. Fallback.
 
 The two libraries list a tag's corners in different orders. Rather than trust the
@@ -41,14 +41,21 @@ class TagDetector:
         self._pupil = None
         self._opencv = None
         if backend in ('auto', 'pupil'):
-            try:
-                from pupil_apriltags import Detector
+            # Two packagings of the same AprilTag library. dt-apriltags has a ready-made
+            # arm64 build, which is what the Jetson uses; pupil-apriltags would not build there.
+            Detector = None
+            for module in ('pupil_apriltags', 'dt_apriltags'):
+                try:
+                    Detector = __import__(module).Detector
+                    break
+                except ImportError:
+                    continue
+            if Detector is not None:
                 self._pupil = Detector(families='tag36h11', nthreads=threads,
                                        quad_decimate=quad_decimate, refine_edges=1)
                 self.backend = 'pupil'
-            except ImportError:
-                if backend == 'pupil':
-                    raise
+            elif backend == 'pupil':
+                raise ImportError('neither pupil_apriltags nor dt_apriltags is installed')
         if self._pupil is None:
             self.backend = 'opencv'
             if hasattr(_aruco, 'ArucoDetector'):

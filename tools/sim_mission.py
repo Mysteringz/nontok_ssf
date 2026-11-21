@@ -44,6 +44,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--timeout', type=float, default=600.0)
     parser.add_argument('--start-wait', type=float, default=180.0, help='time allowed to reach S0_DOCKED')
+    parser.add_argument('--settle', type=float, default=15.0,
+                        help='seconds to wait on the dock before calling (a slow computer is still starting up)')
     args = parser.parse_args()
     rclpy.init()
     node = Human()
@@ -54,6 +56,8 @@ def main() -> int:
         rclpy.spin_once(node, timeout_sec=0.2)
         now = time.monotonic()
         if woken_at is None:
+            if node.state == 'S0_DOCKED' and now - node.started < args.settle:
+                continue
             if node.state == 'S0_DOCKED':
                 # Repeat until the robot leaves the dock: it ignores the word until it is ready.
                 node.wake.publish(Empty())

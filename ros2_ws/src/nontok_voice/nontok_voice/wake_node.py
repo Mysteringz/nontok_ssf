@@ -4,6 +4,7 @@ Listening is switched on by the mission only while the robot is docked.
 """
 import os
 import queue
+import threading
 import time
 
 import numpy as np
@@ -13,7 +14,7 @@ from rclpy.node import Node
 from std_msgs.msg import Empty
 from std_srvs.srv import SetBool
 
-from .wake_logic import WakeTrigger
+from .wake_logic import WakeTrigger, find_microphone, load_model
 
 BLOCK = 1280      # 80 ms at 16 kHz: the block size openWakeWord works in
 SAMPLE_RATE = 16000
@@ -39,13 +40,13 @@ class WakeNode(Node):
                                    'Use "ros2 run nontok_voice trigger" or Bluetooth W instead.' % model_path)
             return
         import sounddevice
-        from openwakeword.model import Model
-        self.model = Model(wakeword_models=[model_path], inference_framework='onnx')
+        self.model = load_model(model_path)
         self.stream = sounddevice.InputStream(
             samplerate=SAMPLE_RATE, channels=1, dtype='int16', blocksize=BLOCK,
-            device=device or None, callback=self.on_audio)
-        self.stream.start()
-        self.create_timer(0.02, self.on_timer)
+            device=find_microphone(sounddevice.query_devices(), device), callback=self.on_audio)
+        if self.enabled:
+            self.stream.start()
+        threading.Thread(target=self._listen_loop, name='wake', daemon=True).start()
         self.get_logger().info('Wake word ready (%s)' % os.path.basename(model_path))
 
     def on_audio(self, data, frames, time_info, status):
@@ -55,19 +56,36 @@ class WakeNode(Node):
             pass   # the node fell behind; dropping audio is harmless
 
     def on_enable(self, request, response):
-        self.enabled = request.data
-        self.trigger.reset()
+        """Away from the dock the microphone is closed, so the node costs nothing while driving
+        (listening takes 40 % of a Jetson Nano core)."""
+        wanted = bool(request.data)
         response.success = True
+        if self.stream is not None and wanted != self.enabled:
+            try:
+                if wanted:
+                    self.model.reset()   # forget sound from before; it needs about 2 s of audio to be ready again
+                    self.stream.start()
+                else:
+                    self.stream.stop()
+            except Exception as error:   # PortAudio: the microphone was unplugged, or is busy
+                self.get_logger().error('Microphone: %s' % error)
+                response.success = False
+                response.message = str(error)
+                wanted = False
+        self.enabled = wanted
+        self.trigger.reset()
         return response
 
-    def on_timer(self):
-        while True:
+    def _listen_loop(self):
+        while rclpy.ok():
             try:
-                block = self.audio.get_nowait()
+                block = self.audio.get(timeout=0.5)
             except queue.Empty:
-                return
-            scores = self.model.predict(block)     # run always, so the model's audio history stays current
-            if self.enabled and self.trigger.update(float(max(scores.values())), time.monotonic()):
+                continue
+            if not self.enabled:
+                continue   # audio left over from before the microphone closed
+            scores = self.model.predict(block)
+            if self.trigger.update(float(max(scores.values())), time.monotonic()):
                 self.get_logger().info('Wake word heard')
                 self.pub.publish(Empty())
 

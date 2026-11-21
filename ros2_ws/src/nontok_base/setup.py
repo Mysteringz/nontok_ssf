@@ -34,7 +34,8 @@ setup(
         'console_scripts': [
             'base_bridge = nontok_base.base_bridge_node:main',
             'fake_mega = nontok_base.fake_mega:main',
-            'calibrate_odometry = nontok_base.calibrate_odometry:main'
+            'calibrate_odometry = nontok_base.calibrate_odometry:main',
+            'wheel_check = nontok_base.wheel_check:main'
         ],
     },
 )
