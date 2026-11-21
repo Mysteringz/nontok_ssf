@@ -2,7 +2,7 @@
 camera, the wake word and the dashboard. The Mega bridge, navigation and the mission are NOT
 started, so nothing can arm or move the motors.
 
-    ros2 launch nontok_bringup camera_demo.launch.py tag_camera:=/dev/video0 tray_camera:=/dev/video2
+    ros2 launch nontok_bringup camera_demo.launch.py [tag_camera:=/dev/cam_front_right] [tray_camera:=/dev/cam_tray]
 
 Watch it with tools/mac_viz.sh. Show a printed tag (docs/tags_160mm.pdf) to the tag camera to
 see it outlined; say "Nontok" to see "Wake word heard"; ask what is in front of the tray camera:
@@ -25,8 +25,8 @@ def generate_launch_description():
                               output='log')
 
     return LaunchDescription([
-        DeclareLaunchArgument('tag_camera', default_value='/dev/video0'),
-        DeclareLaunchArgument('tray_camera', default_value='/dev/video2'),
+        DeclareLaunchArgument('tag_camera', default_value='/dev/cam_front_left'),
+        DeclareLaunchArgument('tray_camera', default_value='/dev/cam_tray'),
         Node(package='nontok_localization', executable='tag_detector', name='tag_detector_front_left',
              parameters=[share('nontok_localization', 'config', 'detector.yaml'),
                          {'camera_name': 'front_left', 'device': LaunchConfiguration('tag_camera'), 'rate_hz': 6.0}],

@@ -34,7 +34,7 @@ from nontok_interfaces.msg import BaseStatus, LocalizationStatus, MissionState, 
 from .telemetry import Telemetry, system_stats, thin_path, yaw_of
 
 RANGES = ('left45', 'right45', 'front', 'left', 'right')
-CAMERAS = ('front_left', 'front_right', 'rear')
+CAMERAS = ('front_left', 'front_right')
 TRAY_STATES = {0: 'EMPTY', 1: 'OCCUPIED', 2: 'MOVING'}
 LOUD_NODES = ('mission_node', 'speech_node', 'wake_node', 'tray_node', 'dock_server', 'base_bridge')
 
