@@ -1,6 +1,6 @@
 tag_localizer:
   ros__parameters:
-    cameras: [front_left, front_right, rear]
+    cameras: [front_left, front_right]   # no rear camera fitted
     max_range_m: 2.5
     max_view_angle_deg: 60.0
     yaw_range_m: 1.5

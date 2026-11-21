@@ -16,8 +16,10 @@ from launch_ros.actions import Node
 
 # name: detections per second. Kept low for the Jetson Nano (see detector.yaml); the localiser
 # uses at most 5 fixes per second from a camera anyway.
-# (If a station is ever made back_in in stations.yaml, give the rear camera 6 and one front 3.)
-CAMERAS = {'front_left': 6.0, 'front_right': 6.0, 'rear': 3.0}
+# No rear camera is fitted (three cameras: two front, one tray). If one is added for a back_in
+# station in stations.yaml, add 'rear': 6.0 here and to the cameras lists in
+# localization.yaml and docking.yaml, and give one front camera 3.
+CAMERAS = {'front_left': 6.0, 'front_right': 6.0}
 
 
 def generate_launch_description():
