@@ -37,7 +37,8 @@ class Bench:
     def __init__(self, port, log_dir, mode, mm_per_count):
         os.makedirs(log_dir, exist_ok=True)
         self.log_path = os.path.join(log_dir, '%s_%s.log' % (mode, time.strftime('%Y%m%d_%H%M%S')))
-        self.log = open(self.log_path, 'w')
+        # Plain ASCII over a bare SSH session: keep any odd byte (the Mega's reset noise) as \xNN.
+        self.log = open(self.log_path, 'w', encoding='ascii', errors='backslashreplace')
         self.mm_per_count = mm_per_count
         self.ser = serial.Serial(port, 115200, timeout=0.02)  # opening resets the Mega
         self.buf = b''
@@ -65,7 +66,7 @@ class Bench:
         out = []
         while b'\n' in self.buf:
             raw, self.buf = self.buf.split(b'\n', 1)
-            text = raw.decode('ascii', 'replace').strip()
+            text = raw.decode('ascii', 'backslashreplace').strip()
             if text:
                 self.log.write('%.3f %s\n' % (time.time(), text))
                 out.append(text)
