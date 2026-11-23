@@ -30,12 +30,13 @@ sys.path.insert(0, os.path.join(HERE, '..', '..', 'ros2_ws', 'src', 'nontok_perc
 from nontok_perception.classifier import preprocess   # the robot's own input path
 
 
-def split(dataset, out, items, val_frac):
+def split(dataset, out, items, val_frac, sessions=None):
     if os.path.isdir(out):
         shutil.rmtree(out)
     counts = {}
     for item in items:
-        files = sorted(glob.glob(os.path.join(dataset, '[!_]*', item, '*.jpg')))
+        files = sorted(f for f in glob.glob(os.path.join(dataset, '[!_]*', item, '*.jpg'))
+                       if not sessions or f.split(os.sep)[-3] in sessions)
         n_val = max(1, int(round(len(files) * val_frac)))
         for part, chunk in (('train', files[:-n_val]), ('val', files[-n_val:])):
             os.makedirs(os.path.join(out, part, item), exist_ok=True)
@@ -50,6 +51,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument('--dataset', default=os.path.join(HERE, 'dataset'))
     ap.add_argument('--items', nargs='+')
+    ap.add_argument('--sessions', nargs='+', help='only these sessions (default: all)')
+    ap.add_argument('--test-sessions', nargs='+', default=[],
+                    help='also score the exported model on all images of these sessions (unseen data)')
     ap.add_argument('--val-frac', type=float, default=0.25)
     ap.add_argument('--epochs', type=int, default=30)
     ap.add_argument('--device', default='mps')
@@ -60,7 +64,7 @@ def main():
                                   if os.path.isdir(p)})
     split_dir = os.path.join(HERE, 'dataset_split')
     print('Split (by time within each video):')
-    split(args.dataset, split_dir, items, args.val_frac)
+    split(args.dataset, split_dir, items, args.val_frac, args.sessions)
 
     from ultralytics import YOLO
     model = YOLO('yolo11n-cls.pt')
@@ -77,11 +81,20 @@ def main():
     names = ast.literal_eval(sess.get_modelmeta().custom_metadata_map['names'])
     labels = [names[i] for i in sorted(names)]
     inp = sess.get_inputs()[0].name
+    score(sess, labels, items, lambda item: sorted(glob.glob(os.path.join(split_dir, 'val', item, '*.jpg'))),
+          'held-out images (same sessions)')
+    for test in args.test_sessions:
+        score(sess, labels, items, lambda item: sorted(glob.glob(os.path.join(args.dataset, test, item, '*.jpg'))),
+              'images of unseen session %s' % test)
+
+
+def score(sess, labels, items, files_of, what):
+    inp = sess.get_inputs()[0].name
     total = right = 0
     times = []
     confusion = {}
     for item in items:
-        for f in sorted(glob.glob(os.path.join(split_dir, 'val', item, '*.jpg'))):
+        for f in files_of(item):
             x = preprocess(cv2.imread(f))
             t0 = time.perf_counter()
             out = sess.run(None, {inp: x})[0].reshape(-1)
@@ -90,7 +103,9 @@ def main():
             total += 1
             right += pred == item
             confusion[(item, pred)] = confusion.get((item, pred), 0) + 1
-    print('ONNX (robot preprocessing) on %d held-out images: %.1f %% correct' % (total, 100.0 * right / max(total, 1)))
+    if not total:
+        return
+    print('ONNX (robot preprocessing) on %d %s: %.1f %% correct' % (total, what, 100.0 * right / max(total, 1)))
     for (truth, pred), n in sorted(confusion.items()):
         print('  %-12s -> %-12s %d' % (truth, pred, n))
     print('Mac CPU time per image: %.1f ms (median)' % (1000 * float(np.median(times))))

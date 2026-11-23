@@ -44,6 +44,7 @@ cd training/video
 ```bash
 python video_to_dataset.py videos/s1/*.mkv --show        # open dataset/review_*.jpg, delete bad crops
 python train_quick.py --items led resistor multimeter     # -> items.onnx and a score
+python train_quick.py --items bolt led multimeter --sessions s2 --test-sessions s1   # train on s2, score on unseen s1
 python detect_video.py videos/test/test.mkv               # -> what appeared when, + test_detections.jpg
 ```
 
