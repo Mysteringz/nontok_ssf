@@ -78,6 +78,20 @@ tools/jetson.sh launch                                 # the real robot
 3. Mega: wheels raised, flash, then work through CP1 (`ENC_SIGN`, `M4_DIR_FROM_COMMAND`, `FFTEST`).
 4. `ros2 launch nontok_bringup teleop.launch.py`, then `ros2 run nontok_base calibrate_odometry straight|strafe|spin|square`.
 
+## Switching the Mega firmware
+
+The robot's Mega holds one program at a time: this repo's firmware (`nontok_ssf`, used by
+`tools/wheel_bench.py` and the ROS bridge) or the teammate's `HARDWARE_PROBE_2` from the Nontok repo
+(used by its probe dashboard). Only the tools of the firmware on the Mega work.
+
+1. On the Mac, after committing: `tools/build_mega_hex.sh [path/to/Nontok]` builds both, names each hex
+   after its commit and copies them to the Jetson (refuses uncommitted firmware changes; `DIRTY=1` allows them).
+2. On the Jetson: `tools/mega_firmware.sh probe`, `ssf` or `which`. Writes and verifies (probe ~30 s,
+   ssf ~7 s), then confirms the boot line. Nothing moves; the port must be free.
+
+The probe dashboard runs on the Mac (Python 3.7 or newer), so with the Mega's USB on the Jetson it
+connects over Bluetooth (HC-06), or move the USB cable to the Mac.
+
 ## Layout
 
 ```text
