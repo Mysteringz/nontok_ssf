@@ -53,7 +53,10 @@ python detect_video.py videos/test/test.mkv               # -> what appeared whe
   empty-tray reference instead). The crop is pixel-identical to `TrayLogic.item_crop` (checked
   on synthetic items with exposure shifts): grey, 5x5 blur, brightness offset removed,
   difference > 25, square 1.4x the box, at least 96 px, 224x224.
-  Recording-only extra: changed regions touching the image border are ignored (camera shake).
+  Recording-only extra: changed regions touching the image border are ignored (camera shake);
+  `--keep-border` turns that off for a steady camera with items near the edge, and
+  `--min-frac 0.0003` keeps small items (a resistor far from the camera). Same options in
+  `detect_video.py`.
 - `train_quick.py` holds out the last 25 % of each item's images: optimistic. For the real
   model, use `../split_by_session.py` (whole sessions held out) and `../train_cls.py`.
 - Every item the robot may see needs a class; anything else is reported as "unknown" only

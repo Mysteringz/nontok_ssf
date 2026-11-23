@@ -30,6 +30,7 @@ def main():
     ap.add_argument('--still-s', type=float, default=0.4)
     ap.add_argument('--min-frac', type=float, default=0.0008)
     ap.add_argument('--max-frac', type=float, default=0.25)
+    ap.add_argument('--keep-border', action='store_true', help='keep changes touching the image edge (steady camera)')
     args = ap.parse_args()
 
     import onnxruntime
@@ -64,7 +65,7 @@ def main():
         prev_g = g
         if not still.update(motion) or n % 3:        # classify ~10 times a second
             continue
-        mask = changed_mask(g, background.at(t), roi)
+        mask = changed_mask(g, background.at(t), roi, not args.keep_border)
         frac = float(mask.mean())
         if not args.min_frac <= frac <= args.max_frac:
             continue

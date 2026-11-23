@@ -34,7 +34,7 @@ def grey(frame):
     return cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
 
 
-def changed_mask(g, ref_g, roi):
+def changed_mask(g, ref_g, roi, drop_border=True):
     # like tray_logic: remove an overall brightness change (auto-exposure) before differencing
     inside = roi > 0
     offset = float(np.median(g[inside])) - float(np.median(ref_g[inside]))
@@ -52,7 +52,7 @@ def changed_mask(g, ref_g, roi):
     for i in range(1, count):
         x, y, w, h, area = stats[i]
         touches = x <= x_lo or y <= y_lo or x + w - 1 >= x_hi or y + h - 1 >= y_hi
-        keep[i] = 0 if touches or area < 12 else 1
+        keep[i] = 0 if (touches and drop_border) or area < 12 else 1
     return keep[labels]
 
 
@@ -168,7 +168,7 @@ def process(path, out_root, args):
         if not still.update(motion):
             stats['moving'] += 1
             continue
-        mask = changed_mask(g, background.at(t), roi)
+        mask = changed_mask(g, background.at(t), roi, not args.keep_border)
         frac = float(mask.mean())
         if frac < args.min_frac:
             stats['empty'] += 1
@@ -211,6 +211,8 @@ def main():
     ap.add_argument('--max-frac', type=float, default=0.25, help='more changed than this = hand/camera moved')
     ap.add_argument('--dup', type=float, default=3.0, help='mean grey difference below which a crop is a duplicate')
     ap.add_argument('--gap-s', type=float, default=0.25, help='min time between kept frames')
+    ap.add_argument('--keep-border', action='store_true',
+                    help='keep changes touching the image edge (steady camera, items placed near the edge)')
     ap.add_argument('--show', action='store_true', help='write review_<session>_<video>.jpg sheets')
     args = ap.parse_args()
     total = sum(process(v, args.out, args) for v in args.videos)
