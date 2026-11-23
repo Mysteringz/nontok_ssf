@@ -83,37 +83,51 @@ static void disarm() {
   haltMotion();
 }
 
-// Bench routine for the feed-forward constants: wheels raised, robot armed. Holds four PWM
-// levels for 2 s each and prints each wheel's steady speed. Any serial byte aborts it.
+// Bench routine for the feed-forward constants: wheels raised, robot armed. Open loop: all four
+// wheels get the same PWM, forward at each level, then reverse, 1 s to settle and 1 s measured
+// per level. Prints "FF <signed pwm> <mm/s x4>" per level (wheel-forward positive). M4 has no
+// channel B, so its sign follows the command. Any serial byte aborts it.
+static bool waitOrAbort(unsigned long ms) {
+  const unsigned long began = millis();
+  while (millis() - began < ms) {
+    wdt_reset();
+    if (Serial.available()) return false;
+  }
+  return true;
+}
+
 static void feedForwardTest() {
-  static const uint8_t LEVELS[] = {60, 90, 120, 150};
-  for (uint8_t level = 0; level < sizeof(LEVELS); ++level) {
-    const int16_t value = LEVELS[level] > MAX_PWM ? MAX_PWM : LEVELS[level];
-    const int16_t pwm[4] = {value, value, value, value};
-    motorsWrite(pwm);
-    int32_t start[4], end[4];
-    unsigned long began = millis();
-    while (millis() - began < 1000) {  // let the speed settle
-      wdt_reset();
-      if (Serial.available()) { disarm(); Serial.println(F("ERR FFTEST_ABORTED")); return; }
+  static const uint8_t LEVELS[] = {60, 90, 120};  // all at or below the MAX_PWM cap of 120
+  static_assert(MAX_PWM >= 120, "FFTEST levels exceed MAX_PWM");
+  for (int8_t dir = 1; dir >= -1; dir -= 2) {
+    for (uint8_t level = 0; level < sizeof(LEVELS); ++level) {
+      const int16_t value = dir * (int16_t)LEVELS[level];
+      const int16_t pwm[4] = {value, value, value, value};
+      motorsWrite(pwm);
+      int32_t start[4], end[4];
+      if (!waitOrAbort(1000)) goto aborted;  // let the speed settle
+      encodersRead(start);
+      const unsigned long t0 = millis();
+      if (!waitOrAbort(1000)) goto aborted;
+      encodersRead(end);
+      const float seconds = (millis() - t0) * 0.001f;
+      Serial.print(F("FF "));
+      Serial.print(value);
+      for (uint8_t i = 0; i < 4; ++i) {
+        Serial.print(' ');
+        Serial.print((int)((end[i] - start[i]) * MM_PER_COUNT / seconds));
+      }
+      Serial.println();
     }
-    encodersRead(start);
-    began = millis();
-    while (millis() - began < 1000) {
-      wdt_reset();
-      if (Serial.available()) { disarm(); Serial.println(F("ERR FFTEST_ABORTED")); return; }
-    }
-    encodersRead(end);
-    Serial.print(F("FF "));
-    Serial.print(value);
-    for (uint8_t i = 0; i < 4; ++i) {
-      Serial.print(' ');
-      Serial.print((int)((end[i] - start[i]) * MM_PER_COUNT));  // mm in 1 s = mm/s
-    }
-    Serial.println();
+    motorsBrake();  // stop before reversing
+    if (!waitOrAbort(dir > 0 ? 700 : 0)) goto aborted;
   }
   disarm();
   Serial.println(F("DONE FFTEST"));
+  return;
+aborted:
+  disarm();
+  Serial.println(F("ERR FFTEST_ABORTED"));
 }
 
 // ---------------- Commands ----------------
@@ -160,8 +174,9 @@ static void execute(const Command& c, unsigned long now) {
       displayText(c.text);
       break;
     case CMD_FFTEST:
-      if (armed) feedForwardTest();
-      else Serial.println(F("ERR NOT_ARMED"));
+      if (!armed) Serial.println(F("ERR NOT_ARMED"));
+      else if (trayMoving()) Serial.println(F("ERR TRAY_BUSY"));  // FFTEST blocks the stepper
+      else feedForwardTest();
       break;
     default:
       Serial.println(F("ERR UNKNOWN"));
@@ -280,8 +295,8 @@ void setup() {
     wheelPi[i].kp = WHEEL_KP;
     wheelPi[i].ki = WHEEL_KI;
     wheelPi[i].iMax = WHEEL_I_MAX;
-    wheelPi[i].ffA = FF_A;
-    wheelPi[i].ffB = FF_B;
+    wheelPi[i].ffA = FF_A[i];
+    wheelPi[i].ffB = FF_B[i];
     wheelPi[i].integral = 0;
   }
   int32_t counts[4];

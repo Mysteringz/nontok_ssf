@@ -33,9 +33,10 @@ const float MAX_WHEEL_MM_S = 400.0f;
 const float WHEEL_DEAD_MM_S = 15.0f;         // smaller targets are treated as stop
 const float ACCEL_MM_S2 = 300.0f;
 const float ACCEL_RAD_S2 = 1.5f;
-// Feed-forward PWM = FF_A + FF_B * speed. TODO: fit per robot from the FFTEST output.
-const float FF_A = 50.0f;
-const float FF_B = 0.35f;
+// Feed-forward PWM = FF_A + FF_B * |speed|, per wheel (FL, FR, RL, RR).
+// TODO: fit from FFTEST with the wheels raised (tools/wheel_bench.py ff prints these lines).
+const float FF_A[4] = {50.0f, 50.0f, 50.0f, 50.0f};
+const float FF_B[4] = {0.35f, 0.35f, 0.35f, 0.35f};
 const float WHEEL_KP = 0.15f;   // PWM per mm/s
 const float WHEEL_KI = 0.6f;    // PWM per mm/s per second
 const float WHEEL_I_MAX = 40.0f;
