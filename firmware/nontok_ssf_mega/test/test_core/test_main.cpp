@@ -123,7 +123,7 @@ void test_parse_rejects_bad_input() {
   TEST_ASSERT_EQUAL(CMD_INVALID, parse("PING 1").type);
   TEST_ASSERT_EQUAL(CMD_INVALID, parse("ping").type);
   TEST_ASSERT_EQUAL(CMD_INVALID, parse("FOO").type);
-  TEST_ASSERT_EQUAL(CMD_INVALID, parse("TRAY 91").type);
+  TEST_ASSERT_EQUAL(CMD_INVALID, parse("TRAY 131").type);
   TEST_ASSERT_EQUAL(CMD_INVALID, parse("TRAY -1").type);
 }
 
@@ -131,6 +131,12 @@ void test_parse_tray_and_oled() {
   Command c = parse("TRAY 50");
   TEST_ASSERT_EQUAL(CMD_TRAY, c.type);
   TEST_ASSERT_EQUAL(50, c.a[0]);
+  c = parse("TRAY 130");  // full dump
+  TEST_ASSERT_EQUAL(CMD_TRAY, c.type);
+  TEST_ASSERT_EQUAL(130, c.a[0]);
+  c = parse("TRAY 0");
+  TEST_ASSERT_EQUAL(CMD_TRAY, c.type);
+  TEST_ASSERT_EQUAL(0, c.a[0]);
   c = parse("OLED TO ELECTRICAL");
   TEST_ASSERT_EQUAL(CMD_OLED, c.type);
   TEST_ASSERT_EQUAL_STRING("TO ELECTRICAL", c.text);

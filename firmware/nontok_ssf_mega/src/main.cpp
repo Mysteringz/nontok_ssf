@@ -9,6 +9,9 @@
 
 using namespace nontok;
 
+// The parser (hardware-free, no config.h) and the tray code must allow the same travel.
+static_assert(TRAY_LIMIT_DEG == TRAY_MAX_DEG, "TRAY_LIMIT_DEG must equal TRAY_MAX_DEG");
+
 enum Fault : uint8_t { FAULT_NONE, FAULT_WATCHDOG, FAULT_IMU };
 static const char* faultName(Fault f) {
   switch (f) {

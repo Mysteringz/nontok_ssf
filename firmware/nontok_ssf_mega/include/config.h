@@ -73,7 +73,8 @@ const unsigned long I2C_TIMEOUT_US = 25000;
 // verified 21 Nov): STEP D46, DIR D45, EN D44, 1/16 microstepping = 3200 steps per turn.
 // Open loop: 0 deg is where the tray is at power-up, so power the robot with the tray flat.
 // TRAY <deg> is in stepper degrees from there. 0..130 is the travel ../Nontok allows
-// (STEPPER_MAX_DEG, 130 = dump); targets outside it are clipped.
+// (STEPPER_MAX_DEG, 130 = dump). The parser refuses targets outside it (ERR UNKNOWN);
+// traySetTarget clips as a second guard. Keep equal to TRAY_LIMIT_DEG in nontok_core.h.
 const uint8_t TRAY_MAX_DEG = 130;
 const bool TRAY_STEPPER_INVERT = false;      // true if a positive move lowers the tray
 const uint16_t TRAY_STEP_PERIOD_US = 400;    // cruise, 0.78 turn/s (../Nontok default)

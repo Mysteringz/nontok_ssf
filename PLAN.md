@@ -374,7 +374,7 @@ Jetson → Mega:
 | `ARM` / `DISARM` | `OK ARM` / `OK DISARM` | Enable or disable motor output |
 | `VEL <vx> <vy> <wz>` | none | Body velocity in mm/s, mm/s, mrad/s. Resend at least every 300 ms while moving |
 | `STOP` or `!` | `OK STOP` | Stop and disarm immediately |
-| `TRAY <deg>` | `OK TRAY`, then `DONE TRAY` | Move the tray stepper to 0..130° from its power-up position (clipped); about 1 s for a full dump. `STOP`/`!` halts it with no `DONE` |
+| `TRAY <deg>` | `OK TRAY`, then `DONE TRAY` | Move the tray stepper to 0..130° from its power-up position (other values: `ERR UNKNOWN`); about 1 s for a full dump. `STOP`/`!` halts it with no `DONE` |
 | `CAL` | `OK CAL` | Re-measure gyro bias (robot must be still, about 1 s) |
 | `OLED <text>` | none | Optional: show up to 16 characters on the OLED (state or fault reason) |
 

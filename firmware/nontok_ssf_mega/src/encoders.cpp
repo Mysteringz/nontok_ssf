@@ -24,10 +24,14 @@ static void isr3() {
 }
 
 void encodersBegin() {
-  for (uint8_t i = 0; i < 4; ++i) {
-    pinMode(ENC_A_PIN[i], INPUT);
-    pinMode(ENC_B_PIN[i], INPUT);
-  }
+  // Pull-ups as in ../Nontok hardware_probe_mega, whose encoders counted on the 3 Nov run.
+  // Harmless if the encoder drives the line itself; needed if its output is open-collector.
+  for (uint8_t i = 0; i < 4; ++i) pinMode(ENC_A_PIN[i], INPUT_PULLUP);
+  for (uint8_t i = 0; i < 3; ++i) pinMode(ENC_B_PIN[i], INPUT_PULLUP);
+#if !M4_DIR_FROM_COMMAND
+  pinMode(ENC_B_PIN[3], INPUT_PULLUP);
+#endif
+  // Otherwise A1 (M4 channel B, header pin reported broken) is not read and left as it is.
   attachInterrupt(digitalPinToInterrupt(ENC_A_PIN[0]), isr0, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC_A_PIN[1]), isr1, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC_A_PIN[2]), isr2, CHANGE);

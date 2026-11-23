@@ -58,7 +58,7 @@ struct Command {
 
 const long VEL_LIMIT_MM_S = 500;
 const long VEL_LIMIT_MRAD_S = 3000;
-const long TRAY_LIMIT_DEG = 90;
+const long TRAY_LIMIT_DEG = 130;  // stepper travel; must equal TRAY_MAX_DEG in config.h
 
 // Parses one line without its newline. The buffer is modified (split into words).
 Command parseLine(char* line);
