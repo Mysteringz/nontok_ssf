@@ -134,6 +134,7 @@ static void execute(const Command& c, unsigned long now) {
       break;
     case CMD_STOP:
       disarm();
+      trayStop();
       Serial.println(F("OK STOP"));
       break;
     case CMD_VEL:
@@ -145,7 +146,7 @@ static void execute(const Command& c, unsigned long now) {
       }
       break;
     case CMD_TRAY:
-      traySetTarget((uint8_t)c.a[0]);
+      traySetTarget((int16_t)constrain(c.a[0], 0L, (long)TRAY_MAX_DEG));
       Serial.println(F("OK TRAY"));
       break;
     case CMD_CAL:
@@ -170,6 +171,7 @@ static void readUsb(unsigned long now) {
     const char c = (char)Serial.read();
     if (c == '!') {  // immediate stop, even in the middle of a damaged line
       disarm();
+      trayStop();
       Serial.println(F("OK STOP"));
       continue;
     }
@@ -185,6 +187,7 @@ static void readBluetooth() {
     const char c = (char)Serial3.read();
     if (c == 'Z') {
       disarm();
+      trayStop();
       Serial.println(F("EVT BTSTOP"));
     } else if (c == 'W') {
       Serial.println(F("EVT WAKE"));
@@ -234,18 +237,30 @@ static void controlCycle(unsigned long now) {
     motorsCoast();  // ...then release, so the robot can be moved by hand
   }
 
-  ultrasonicPingNext();
+  // While the tray stepper moves, nothing here may block for more than a step period: a
+  // stall at cruise speed can make the motor skip. So no ultrasonic ping (blocks up to 15 ms;
+  // RNG repeats the last readings, the robot is stationary) and one line per cycle, which fits
+  // the 64-byte serial buffer, instead of up to three.
+  const bool trayBusy = trayMoving();
+  if (!trayBusy) ultrasonicPingNext();
 
   const bool commandedStill = !armed || (wanted.vx == 0 && wanted.vy == 0 && wanted.wz == 0);
   if (!(wheelsStill && commandedStill)) stillSinceMs = now;
   imuService(now, now - stillSinceMs > 500);
 
-  sendOdo(now, counts, imuTakeRateMrad());
-  if (cycle % RNG_EVERY_CYCLES == 0) sendRng(now);
-  if (cycle % STA_EVERY_CYCLES == 0) sendSta(now);
+  const bool rng = cycle % RNG_EVERY_CYCLES == 0, sta = cycle % STA_EVERY_CYCLES == 0;
+  if (!trayBusy) {
+    sendOdo(now, counts, imuTakeRateMrad());
+    if (rng) sendRng(now);
+    if (sta) sendSta(now);
+  } else if (sta) {
+    sendSta(now);
+  } else if (rng) {
+    sendRng(now);
+  } else {
+    sendOdo(now, counts, imuTakeRateMrad());  // the rate is the mean since the last ODO
+  }
   cycle = (cycle + 1) % (RNG_EVERY_CYCLES * STA_EVERY_CYCLES);
-
-  if (trayService(now)) Serial.println(F("DONE TRAY"));
 }
 
 void setup() {
@@ -280,6 +295,7 @@ void loop() {
   const unsigned long now = millis();
   readUsb(now);
   readBluetooth();
+  if (trayService(now)) Serial.println(F("DONE TRAY"));  // every pass: steps are timed in us
   if (now - lastCycleMs >= CONTROL_PERIOD_MS) {
     lastCycleMs += CONTROL_PERIOD_MS;
     if (now - lastCycleMs >= CONTROL_PERIOD_MS) lastCycleMs = now;  // fell behind: do not burst

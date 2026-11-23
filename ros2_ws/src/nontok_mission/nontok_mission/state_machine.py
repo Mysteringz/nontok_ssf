@@ -72,7 +72,7 @@ class MissionConfig:
     item_wait_s: float = 120.0
     classify_retries: int = 2
     classify_retry_wait_s: float = 4.0
-    tray_up_deg: float = 50.0
+    tray_up_deg: float = 130.0             # tray stepper degrees, 0..130
     dump_hold_s: float = 1.5
     dump_settle_s: float = 1.0
     dump_repeats: int = 1

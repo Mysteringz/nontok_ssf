@@ -62,8 +62,12 @@ def encode_vel(vx: float, vy: float, wz: float) -> str:
     )
 
 
+TRAY_MAX_DEG = 130   # stepper travel the firmware allows (0 = flat at power-up, 130 = dump)
+
+
 def encode_tray(angle_deg: float) -> str:
-    return 'TRAY %d' % int(max(0, min(90, round(angle_deg))))
+    """Tray stepper angle in degrees from the power-up position -> a TRAY line (clamped)."""
+    return 'TRAY %d' % int(max(0, min(TRAY_MAX_DEG, round(angle_deg))))
 
 
 def encode_oled(text: str) -> str:

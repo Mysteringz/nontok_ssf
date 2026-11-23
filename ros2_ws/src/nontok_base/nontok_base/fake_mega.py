@@ -89,8 +89,8 @@ class FakeMegaCore:
                 self.wanted = [numbers[0] / 1000.0, numbers[1] / 1000.0, numbers[2] / 1000.0]
                 self.last_vel_t = self.t
             return []
-        if word == 'TRAY' and len(numbers) == 1 and 0 <= numbers[0] <= 90:
-            self.tray_target = min(numbers[0], 60)
+        if word == 'TRAY' and len(numbers) == 1:
+            self.tray_target = max(0, min(numbers[0], 130))   # the firmware clips to 0..130
             self.tray_moving = True
             return ['OK TRAY']
         return ['ERR UNKNOWN']
@@ -139,9 +139,9 @@ class FakeMegaCore:
 
         if self.tray_moving:
             if self.tray_deg < self.tray_target:
-                self.tray_deg = min(self.tray_target, self.tray_deg + 2)
+                self.tray_deg = min(self.tray_target, self.tray_deg + 5)   # stepper: ~1 s for 0..130
             elif self.tray_deg > self.tray_target:
-                self.tray_deg = max(self.tray_target, self.tray_deg - 4)
+                self.tray_deg = max(self.tray_target, self.tray_deg - 5)
             if self.tray_deg == self.tray_target:
                 self.tray_moving = False
                 out.append('DONE TRAY')

@@ -4,6 +4,8 @@ import pytest
 from nontok_mission import state_machine as sm
 from nontok_mission.state_machine import FAILED, OK, RUNNING, Mission, MissionConfig, RobotApi
 
+UP = MissionConfig().tray_up_deg   # dump angle the tests expect
+
 DT = 0.1
 
 
@@ -182,7 +184,7 @@ def test_full_mission_for_each_station(item, station):
     assert r.states == FULL_PATH
     assert nav_targets(r.robot) == ['pickup', station, 'dock']
     assert [c[1] for c in r.robot.calls if c[0] == 'dock'] == ['pickup', station, 'dock']
-    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [50.0, 0.0]
+    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [UP, 0.0]
     assert len([c for c in r.robot.calls if c[0] == 'retreat']) == 3     # dock, pickup, station
     end = [e for e in r.events if e['event'] == 'mission_end'][0]
     assert end['result'] == 'OK' and end['station'] == station and end['item'] == item
@@ -328,7 +330,7 @@ def test_item_stuck_is_dumped_twice_then_reported():
     r.to_item_wait()
     r.robot.item_on_tray = True
     r.until(sm.S0_DOCKED)
-    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [50.0, 0.0, 50.0, 0.0]
+    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [UP, 0.0, UP, 0.0]
     assert [e for e in r.events if e['event'] == 'mission_end'][0]['result'] == 'ITEM_STUCK'
 
 

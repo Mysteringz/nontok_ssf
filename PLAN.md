@@ -123,7 +123,7 @@ New pins proposed for this task:
 
 | Function | Pin | Notes |
 |---|---|---|
-| Tray dump servo signal | **D46** | Confirm D46 is exposed on the shield SERVO row; alternatives D44, D45. Uses Timer5, which no motor PWM pin needs |
+| Tray dump stepper STEP / DIR / EN | **D46 / D45 / D44** | DRV8825/A4988 on the shield PL header, 1/16 microstepping (3200 steps/turn), 12 V motor supply; verified 21 Nov in ../Nontok. EN LOW = driver on |
 | Tray-home switch (optional) | D26 | Free on the updated shield (legacy M4 pin) |
 | Charge-receiver voltage sense | **A8** | Through a resistor divider; A0 is taken by an LDR |
 | Motor battery voltage sense (optional) | A9 | Through a divider; for a low-battery return |
@@ -374,7 +374,7 @@ Jetson → Mega:
 | `ARM` / `DISARM` | `OK ARM` / `OK DISARM` | Enable or disable motor output |
 | `VEL <vx> <vy> <wz>` | none | Body velocity in mm/s, mm/s, mrad/s. Resend at least every 300 ms while moving |
 | `STOP` or `!` | `OK STOP` | Stop and disarm immediately |
-| `TRAY <deg>` | `OK TRAY`, then `DONE TRAY` | Move the tray servo to an angle at a limited rate |
+| `TRAY <deg>` | `OK TRAY`, then `DONE TRAY` | Move the tray stepper to 0..130° from its power-up position (clipped); about 1 s for a full dump. `STOP`/`!` halts it with no `DONE` |
 | `CAL` | `OK CAL` | Re-measure gyro bias (robot must be still, about 1 s) |
 | `OLED <text>` | none | Optional: show up to 16 characters on the OLED (state or fault reason) |
 
@@ -452,8 +452,8 @@ Stations are categories, not objects, so the model learns specific item types an
 
 | Item | Spec |
 |---|---|
-| Tray angle | 0° rest, 45–55° tipped (**TODO** tune with real items) |
-| Servo rate | About 60 °/s up, 90 °/s down |
+| Tray angle | Stepper 0° rest, 130° tipped: the 0–130° travel allowed in ../Nontok (dashboard models it as about 55° of bed tilt) |
+| Stepper rate | 400 µs/step cruise with a 400-step ramp: 0→130° in about 1 s. Driver holds torque until the tray is back at 0°. Power up with the tray flat: 0° is the power-up position |
 | Hold | 1.5 s at the top |
 | Robot during dump | Stationary and disarmed |
 | Verification | Tray camera empty check; one retry |

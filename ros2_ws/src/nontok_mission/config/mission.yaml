@@ -9,7 +9,7 @@ mission_node:
     item_wait_s: 120.0
     classify_retries: 2
     classify_retry_wait_s: 4.0
-    tray_up_deg: 50.0            # TODO tune with real items
+    tray_up_deg: 130.0           # stepper degrees; 130 = the ../Nontok dump position (its max)
     dump_hold_s: 1.5
     dump_settle_s: 1.0
     dump_repeats: 1

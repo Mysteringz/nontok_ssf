@@ -68,14 +68,18 @@ const uint8_t IMU_ADDRESS = 0x68;
 const float GYRO_SIGN = -1.0f;  // counter-clockwise positive; confirmed 27 Oct in ../Nontok
 const unsigned long I2C_TIMEOUT_US = 25000;
 
-// ---------------- Tray servo ----------------
-const uint8_t TRAY_SERVO_PIN = 46;      // TODO confirm on the shield SERVO row (else 44 or 45)
-const uint8_t TRAY_REST_SERVO_DEG = 10; // servo angle with the tray flat; TODO tune
-const int8_t TRAY_SERVO_DIR = 1;        // +1 if a larger servo angle lifts the tray
-const uint8_t TRAY_MAX_DEG = 60;
-const uint8_t TRAY_UP_DEG_PER_CYCLE = 2;    // 50 deg/s
-const uint8_t TRAY_DOWN_DEG_PER_CYCLE = 4;  // 100 deg/s
-const uint16_t TRAY_DETACH_MS = 500;        // release the servo this long after returning flat
+// ---------------- Tray stepper (dump) ----------------
+// Stepper on the shield PL header through include/stepper_driver.h (from ../Nontok, wiring
+// verified 21 Nov): STEP D46, DIR D45, EN D44, 1/16 microstepping = 3200 steps per turn.
+// Open loop: 0 deg is where the tray is at power-up, so power the robot with the tray flat.
+// TRAY <deg> is in stepper degrees from there. 0..130 is the travel ../Nontok allows
+// (STEPPER_MAX_DEG, 130 = dump); targets outside it are clipped.
+const uint8_t TRAY_MAX_DEG = 130;
+const bool TRAY_STEPPER_INVERT = false;      // true if a positive move lowers the tray
+const uint16_t TRAY_STEP_PERIOD_US = 400;    // cruise, 0.78 turn/s (../Nontok default)
+const uint16_t TRAY_START_PERIOD_US = 1600;  // first and last step of the ramp
+const uint16_t TRAY_RAMP_STEPS = 400;
+const uint16_t TRAY_RELEASE_MS = 500;        // driver off this long after reaching 0 deg
 
 // ---------------- Voltage sensing (optional) ----------------
 // Set to 1 once the divider is wired; otherwise the value is reported as 0.

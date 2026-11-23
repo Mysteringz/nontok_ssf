@@ -213,6 +213,18 @@ def test_tray_command_round_trip():
     assert 'DONE TRAY' in lines and mega.tray_deg == 50
 
 
+def test_tray_angle_is_clamped_to_the_stepper_travel():
+    assert protocol.encode_tray(130) == 'TRAY 130'
+    assert protocol.encode_tray(200) == 'TRAY 130'
+    assert protocol.encode_tray(-5) == 'TRAY 0'
+    core, mega = start()
+    assert mega.feed('TRAY 130') == ['OK TRAY']
+    lines = []
+    for _ in range(40):          # 1.6 s: a full dump must finish well inside the bridge's 5 s wait
+        lines += mega.step()
+    assert 'DONE TRAY' in lines and mega.tray_deg == 130
+
+
 # ---------------- over a real (pseudo) serial port ----------------
 @pytest.mark.skipif(os.name != 'posix', reason='needs a pseudo-terminal')
 def test_fake_mega_over_pty():
