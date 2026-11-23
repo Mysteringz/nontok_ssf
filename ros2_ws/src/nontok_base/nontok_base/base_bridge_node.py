@@ -37,7 +37,7 @@ class BaseBridge(Node):
         params = MecanumParams(
             wheel_diameter_m=p('wheel_diameter_m', 0.080).value,
             counts_per_rev=p('counts_per_rev', 660.0).value,
-            rotation_arm_m=p('rotation_arm_m', 0.160).value,
+            rotation_arm_m=p('rotation_arm_m', 0.1925).value,
             scale_x=p('scale_x', 1.0).value,
             scale_y=p('scale_y', 1.0).value,
         )

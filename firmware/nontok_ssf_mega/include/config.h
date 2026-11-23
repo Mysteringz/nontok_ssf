@@ -25,10 +25,10 @@ const uint8_t MIN_PWM = 60;   // below this the motors stall
 const uint8_t MAX_PWM = 120;  // commissioning cap; raise only after checkpoint CP1
 
 // ---------------- Wheel geometry and control ----------------
-const float WHEEL_DIAMETER_MM = 80.0f;       // TODO measure
+const float WHEEL_DIAMETER_MM = 80.0f;       // calipers 23 Nov; refine with the 2 m run (CP2)
 const float ENC_COUNTS_PER_REV = 660.0f;     // 11 pulses x 30 gearbox x 2 edges; TODO verify
 const float MM_PER_COUNT = 3.14159265f * WHEEL_DIAMETER_MM / ENC_COUNTS_PER_REV;
-const float ROTATION_ARM_MM = 160.0f;        // half wheelbase + half track; TODO measure
+const float ROTATION_ARM_MM = 192.5f;        // half wheelbase + half track = 165/2 + 220/2 (23 Nov)
 const float MAX_WHEEL_MM_S = 400.0f;
 const float WHEEL_DEAD_MM_S = 15.0f;         // smaller targets are treated as stop
 const float ACCEL_MM_S2 = 300.0f;

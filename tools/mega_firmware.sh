@@ -53,8 +53,12 @@ esac
 [ -f "$HEX" ] || { echo "Missing $HEX: run tools/build_mega_hex.sh on the Mac"; exit 1; }
 port_free
 echo "Flashing $1 from $(readlink -f "$HEX") ..."
-avrdude -q -p m2560 -c wiring -P "$PORT" -b 115200 -D -U "flash:w:$HEX:i" 2>&1 \
-  | grep -E "signature|bytes of flash (written|verified)|rror|mismatch" || true
+# A failed write must not pass: the old firmware of the same kind would still boot and identify.
+if ! OUT=$(avrdude -q -p m2560 -c wiring -P "$PORT" -b 115200 -D -U "flash:w:$HEX:i" 2>&1); then
+  echo "$OUT" | tail -n 8; echo "AVRDUDE FAILED: the Mega may hold a half-written program; run this again"; exit 1
+fi
+echo "$OUT" | grep -E "signature|bytes of flash (written|verified)" || true
+echo "$OUT" | grep -q "bytes of flash verified" || { echo "No verify line from avrdude"; exit 1; }
 GOT=$(identify) || { echo "Flashed, but the boot line was not recognised: $GOT"; exit 1; }
 echo "Running: $GOT"
 case "$GOT" in "$1"*) ;; *) echo "WRONG FIRMWARE RUNNING"; exit 1 ;; esac

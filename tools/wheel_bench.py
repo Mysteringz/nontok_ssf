@@ -26,7 +26,7 @@ WHEELS = ('FL', 'FR', 'RL', 'RR')
 # Must match firmware/nontok_ssf_mega/include/config.h.
 WHEEL_DIAMETER_MM = 80.0
 ENC_COUNTS_PER_REV = 660.0
-ROTATION_ARM_MM = 160.0
+ROTATION_ARM_MM = 192.5   # 165/2 + 220/2, measured 23 Nov
 MAX_WHEEL_MM_S = 400.0
 ACCEL_MM_S2 = 300.0
 ACCEL_RAD_S2 = 1.5
@@ -271,6 +271,7 @@ def run_hold(bench, args):
     history = []  # (t_ms, counts)
     wrong_since = [None] * 4
     fast_since = [None] * 4
+    dead_since = [None] * 4
     for name, vx, vy, wz in steps + [('stop', 0, 0, 0)]:
         print('%-16s' % name, end=' ', flush=True)
         hold_s = 1.5 if name == 'stop' else args.seconds
@@ -309,14 +310,21 @@ def run_hold(bench, args):
                     e, v = expect[i], speed[i]
                     wrong = abs(e) > 50 and v * math.copysign(1, e) < -40
                     fast = abs(v) > 1.5 * abs(e) + 60
+                    # No counts while it should turn: the speed loop is then driving that wheel
+                    # at the PWM cap, and nothing above can see it.
+                    dead = abs(e) > 80 and abs(v) < 15
                     wrong_since[i] = (wrong_since[i] or now) if wrong else None
                     fast_since[i] = (fast_since[i] or now) if fast else None
+                    dead_since[i] = (dead_since[i] or now) if dead else None
+                    if dead_since[i] and now - dead_since[i] > 0.6:
+                        raise RuntimeError('%s gives NO COUNTS (wanted %+.0f mm/s): encoder not read, '
+                                           'or the wheel is not turning; stopped' % (WHEELS[i], e))
                     if wrong_since[i] and now - wrong_since[i] > 0.3:
                         raise RuntimeError('%s turns the WRONG WAY (%+.0f mm/s, wanted %+.0f): stopped'
                                            % (WHEELS[i], v, e))
                     if fast_since[i] and now - fast_since[i] > 0.5:
-                        raise RuntimeError('%s runs away (%+.0f mm/s, wanted %+.0f): sign error or '
-                                           'encoder not counting; stopped' % (WHEELS[i], v, e))
+                        raise RuntimeError('%s runs away (%+.0f mm/s, wanted %+.0f): feed-forward too '
+                                           'high or counts per turn wrong; stopped' % (WHEELS[i], v, e))
         if name == 'stop':
             print()
             break
@@ -349,6 +357,7 @@ def run_hold(bench, args):
         ramped = [0.0, 0.0, 0.0]  # the firmware ramps back to 0 during the pause; close enough
         wrong_since = [None] * 4
         fast_since = [None] * 4
+        dead_since = [None] * 4
     bench.send('DISARM')
     passed = sum(1 for _, ok in results if ok)
     print('\n%d of %d steps pass (each wheel within 10 %% of its target, measured over the last %.1f s).'

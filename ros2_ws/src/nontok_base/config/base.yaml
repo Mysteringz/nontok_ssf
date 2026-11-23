@@ -3,9 +3,9 @@ base_bridge:
   ros__parameters:
     port: /dev/nontok_mega
     baud: 115200
-    wheel_diameter_m: 0.080     # TODO: calibrate_odometry straight
+    wheel_diameter_m: 0.080     # calipers 23 Nov; refine: calibrate_odometry straight
     counts_per_rev: 660.0       # TODO: turn a wheel 10 times and count
-    rotation_arm_m: 0.160       # TODO: half wheelbase + half track
+    rotation_arm_m: 0.1925      # half wheelbase + half track = 0.165/2 + 0.220/2 (23 Nov)
     scale_x: 1.0
     scale_y: 1.0                # TODO: calibrate_odometry strafe
     gyro_scale: 1.009           # 1 / 0.991 measured 27 Oct in ../Nontok; re-check with "spin"

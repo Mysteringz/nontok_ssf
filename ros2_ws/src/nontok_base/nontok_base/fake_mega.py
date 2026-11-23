@@ -25,7 +25,7 @@ def _step_toward(current: float, target: float, max_step: float) -> float:
 
 class FakeMegaCore:
     def __init__(self, wheel_diameter_m: float = 0.080, counts_per_rev: float = 660.0,
-                 rotation_arm_m: float = 0.160):
+                 rotation_arm_m: float = 0.1925):
         self.metres_per_count = math.pi * wheel_diameter_m / counts_per_rev
         self.arm = rotation_arm_m
         self.t = 0.0

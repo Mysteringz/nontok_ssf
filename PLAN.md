@@ -75,9 +75,9 @@ Division of work: the Mega does everything time-critical (wheel control, sensor 
 |---|---|---|
 | Controller | Arduino Mega 2560 (clone, CH340 USB, VID:PID 1A86:7523) | Board replaced 27 Oct |
 | Motor shield | MOEBIUS TECH 4Motor&9Servo, 2× TB6612FNG, updated (2024) revision | `docs/hardware.md` |
-| Wheels | 4× mecanum, 80 mm diameter (kit value) | **TODO** measure diameter |
+| Wheels | 4× mecanum, 80 mm diameter (calipers, 23 Nov) | Refine with the 2 m straight run (CP2) |
 | Motors | DC gear motors with 11-pulse encoders, 1:30 gearbox (kit value) | **TODO** verify by turning a wheel 10 revolutions |
-| Rotation arm | 160 mm (half wheelbase + half track) | Placeholder in `config.h`; **TODO** measure |
+| Rotation arm | 192.5 mm = half wheelbase + half track (wheelbase 165 mm, track 220 mm between wheel centres) | Measured 23 Nov |
 | Gyro | MPU6050 at I²C 0x68, on the shield IMU header | Confirmed 27 Oct |
 | Ultrasonics | 5× HC-SR04-type at +90°, +45°, 0°, −45°, −90° | Confirmed 27 Oct |
 | OLED | SSD1306 128×32, I²C 0x3c, no reset wire | Confirmed |
@@ -631,9 +631,9 @@ Cut in this order, keeping a complete demo at each step:
 
 | Value | Used in | Measured |
 |---|---|---|
-| Wheel diameter (mm) | Odometry | |
+| Wheel diameter (mm) | Odometry | 80 (calipers, 23 Nov; refine at CP2) |
 | Encoder counts per wheel revolution | Odometry | |
-| Rotation arm L (mm) | Kinematics | |
+| Rotation arm L (mm) | Kinematics | 192.5 (wheelbase 165, track 220, 23 Nov) |
 | Robot footprint, length × width (mm) | Nav2 | |
 | Strafe scale factor | Odometry | |
 | Gyro scale factor | Local EKF | 0.991 (27 Oct, re-check) |
