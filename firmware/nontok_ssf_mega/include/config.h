@@ -46,8 +46,10 @@ const float WHEEL_I_MAX = 40.0f;
 // Channel B: D31 (PC6), D38 (PD7), D49 (PL0), A1 (PF1).
 const uint8_t ENC_A_PIN[4] = {18, 19, 3, 2};
 const uint8_t ENC_B_PIN[4] = {31, 38, 49, A1};
-// +1 if the count rises when the wheel rolls the robot forward. TODO verify at CP1.
-const int8_t ENC_SIGN[4] = {1, -1, 1, -1};
+// +1 if the count rises when the wheel rolls the robot forward. Hand test 23 Nov (wheels raised,
+// 10 turns each way): FL, FR, RL all counted DOWN when rolled forward with {1, -1, 1, -1}, so the
+// whole set is negated. RR (M4) has no channel B and ignores this; its +1 follows the pattern only.
+const int8_t ENC_SIGN[4] = {-1, 1, -1, 1};
 // The Mega's A1 header pin is reported broken, so wheel 4 takes its direction from the sign of
 // its last PWM command. Set to 0 once channel B of M4 is confirmed readable.
 #ifndef M4_DIR_FROM_COMMAND
