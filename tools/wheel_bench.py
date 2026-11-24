@@ -407,6 +407,7 @@ def run_drive(bench, args):
     still_since = None
     last_counts = None
     travelled = 0.0
+    near_before = [False, False, False]
     while True:
         now = time.time()
         if now - t_start > timeout:
@@ -421,8 +422,11 @@ def run_drive(bench, args):
                 r = text.split()
                 if sign > 0 and len(r) == 7:
                     front = [int(r[2]), int(r[3]), int(r[4])]  # FL45, FR45, front
-                    if 0 <= front[2] < 250 or any(0 <= v < 150 for v in front[:2]):
-                        raise RuntimeError('obstacle ahead (FL45/FR45/front %s mm): stopped' % front)
+                    near = [0 <= front[0] < 150, 0 <= front[1] < 150, 0 <= front[2] < 250]
+                    # Two readings in a row (200 ms apart): one stray echo must not stop the run.
+                    if any(a and b for a, b in zip(near, near_before)):
+                        raise RuntimeError('obstacle ahead (FL45/FR45/front %s mm, twice): stopped' % front)
+                    near_before = near
             odo = parse_odo(text)
             if not odo:
                 continue
