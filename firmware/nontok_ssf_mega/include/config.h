@@ -21,7 +21,7 @@ const uint8_t MOTOR_IN1[4] = {34, 37, 43, A4};
 const uint8_t MOTOR_IN2[4] = {35, 36, 42, A5};
 // Measured 23 Oct in ../Nontok with the wheels raised: positive = toward the ultrasonic end.
 const int8_t MOTOR_SIGN[4] = {1, -1, 1, -1};
-const uint8_t MIN_PWM = 60;   // below this the motors stall
+const uint8_t MIN_PWM = 60;   // not used by the controller; lifted wheels turn from PWM 30 (FFTEST 24 Nov)
 const uint8_t MAX_PWM = 120;  // commissioning cap; raise only after checkpoint CP1
 
 // ---------------- Wheel geometry and control ----------------
@@ -34,9 +34,10 @@ const float WHEEL_DEAD_MM_S = 15.0f;         // smaller targets are treated as s
 const float ACCEL_MM_S2 = 300.0f;
 const float ACCEL_RAD_S2 = 1.5f;
 // Feed-forward PWM = FF_A + FF_B * |speed|, per wheel (FL, FR, RL, RR).
-// TODO: fit from FFTEST with the wheels raised (tools/wheel_bench.py ff prints these lines).
-const float FF_A[4] = {50.0f, 50.0f, 50.0f, 50.0f};
-const float FF_B[4] = {0.35f, 0.35f, 0.35f, 0.35f};
+// Fitted 24 Nov with the wheels RAISED (wheel_bench ff, PWM 30-120, log ff_20261124_110542):
+// linear, every wheel turns from PWM 30. The floor adds load, so FF_A will grow: refit at CP2.
+const float FF_A[4] = {2.8f, 3.9f, 5.4f, 5.3f};
+const float FF_B[4] = {0.148f, 0.150f, 0.146f, 0.143f};
 const float WHEEL_KP = 0.15f;   // PWM per mm/s
 const float WHEEL_KI = 0.6f;    // PWM per mm/s per second
 const float WHEEL_I_MAX = 40.0f;
