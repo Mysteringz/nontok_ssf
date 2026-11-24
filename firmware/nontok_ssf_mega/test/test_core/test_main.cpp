@@ -142,6 +142,25 @@ void test_parse_tray_and_oled() {
   TEST_ASSERT_EQUAL_STRING("TO ELECTRICAL", c.text);
 }
 
+void test_parse_fftest_levels() {
+  Command c = parse("FFTEST");  // no levels: the firmware's defaults
+  TEST_ASSERT_EQUAL(CMD_FFTEST, c.type);
+  TEST_ASSERT_EQUAL(0, c.a[0]);
+  c = parse("FFTEST 30 45 60");
+  TEST_ASSERT_EQUAL(CMD_FFTEST, c.type);
+  TEST_ASSERT_EQUAL(30, c.a[0]);
+  TEST_ASSERT_EQUAL(45, c.a[1]);
+  TEST_ASSERT_EQUAL(60, c.a[2]);
+  c = parse("FFTEST 120");
+  TEST_ASSERT_EQUAL(120, c.a[0]);
+  TEST_ASSERT_EQUAL(0, c.a[1]);
+  TEST_ASSERT_EQUAL(CMD_INVALID, parse("FFTEST 0").type);
+  TEST_ASSERT_EQUAL(CMD_INVALID, parse("FFTEST 121").type);
+  TEST_ASSERT_EQUAL(CMD_INVALID, parse("FFTEST -40").type);
+  TEST_ASSERT_EQUAL(CMD_INVALID, parse("FFTEST 30 x").type);
+  TEST_ASSERT_EQUAL(CMD_INVALID, parse("FFTEST 10 20 30 40").type);
+}
+
 void test_line_buffer() {
   LineBuffer lb;
   const char* text = "PING\n";
@@ -173,6 +192,7 @@ int main(int, char**) {
   RUN_TEST(test_parse_vel);
   RUN_TEST(test_parse_rejects_bad_input);
   RUN_TEST(test_parse_tray_and_oled);
+  RUN_TEST(test_parse_fftest_levels);
   RUN_TEST(test_line_buffer);
   return UNITY_END();
 }

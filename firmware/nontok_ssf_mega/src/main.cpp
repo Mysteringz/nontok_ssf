@@ -96,12 +96,18 @@ static bool waitOrAbort(unsigned long ms) {
   return true;
 }
 
-static void feedForwardTest() {
-  static const uint8_t LEVELS[] = {60, 90, 120};  // all at or below the MAX_PWM cap of 120
-  static_assert(MAX_PWM >= 120, "FFTEST levels exceed MAX_PWM");
+static void feedForwardTest(const Command& c) {
+  // "FFTEST a b c": up to 3 levels (parser allows 1..FFTEST_MAX_PWM); plain "FFTEST": 60 90 120.
+  static_assert(FFTEST_MAX_PWM == MAX_PWM, "FFTEST_MAX_PWM must equal MAX_PWM");
+  uint8_t levels[3] = {60, 90, 120};
+  uint8_t count = 3;
+  if (c.a[0] != 0) {
+    count = 0;
+    while (count < 3 && c.a[count] != 0) { levels[count] = (uint8_t)c.a[count]; ++count; }
+  }
   for (int8_t dir = 1; dir >= -1; dir -= 2) {
-    for (uint8_t level = 0; level < sizeof(LEVELS); ++level) {
-      const int16_t value = dir * (int16_t)LEVELS[level];
+    for (uint8_t level = 0; level < count; ++level) {
+      const int16_t value = dir * (int16_t)levels[level];
       const int16_t pwm[4] = {value, value, value, value};
       motorsWrite(pwm);
       int32_t start[4], end[4];
@@ -176,7 +182,7 @@ static void execute(const Command& c, unsigned long now) {
     case CMD_FFTEST:
       if (!armed) Serial.println(F("ERR NOT_ARMED"));
       else if (trayMoving()) Serial.println(F("ERR TRAY_BUSY"));  // FFTEST blocks the stepper
-      else feedForwardTest();
+      else feedForwardTest(c);
       break;
     default:
       Serial.println(F("ERR UNKNOWN"));

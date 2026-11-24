@@ -815,7 +815,7 @@ Main loop, every 40 ms:
 Specific implementation points:
 
 - **Encoder interrupt.** Channel A pins map to external interrupts INT3 (D18), INT2 (D19), INT5 (D3), INT4 (D2), attached on `CHANGE`. Each handler reads A and B straight from the port registers (B is PC6, PD7, PL0, PF1) and adds +1 or −1 depending on whether they are equal. A compile-time flag `M4_DIR_FROM_COMMAND` makes wheel 4 use the sign of its last PWM instead.
-- **Feed-forward constants.** Found once by a bench routine (`FFTEST` command, wheels raised): hold PWM 60, 90, 120, 150 for 2 s each, print the steady speed, fit a line per wheel.
+- **Feed-forward constants.** Found once by a bench routine (`FFTEST` command, wheels raised): `FFTEST [a [b [c]]]` runs up to 3 PWM levels (1..MAX_PWM; default 60 90 120) forward then reverse, 1 s settle + 1 s measured each, and prints `FF <pwm> <mm/s x4>`; `tools/wheel_bench.py ff --levels ...` runs up to 6 and fits a line per wheel.
 - **PI starting gains.** Kp = 0.15 PWM per mm/s, Ki = 0.6 PWM per mm/s per second, integral clamped to ±40 PWM. Targets below 15 mm/s are treated as zero, because the motors stall under PWM 60.
 - **Parser.** Fixed 48-byte buffer, `strtol` only, no `String` objects. A `!` byte stops the motors the moment it is read, before the line is complete. Unknown or over-long lines produce `ERR` and do not change state.
 - **Ultrasonic.** `pulseIn` with a 15,000 µs timeout. Encoder interrupts during the pulse shorten the reading by at most about 2–3 % at full speed, which is acceptable for obstacle detection.

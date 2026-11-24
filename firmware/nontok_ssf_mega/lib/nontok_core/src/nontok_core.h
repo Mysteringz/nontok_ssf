@@ -46,7 +46,7 @@ enum CmdType : uint8_t {
   CMD_TRAY,    // a[0] = degrees
   CMD_CAL,
   CMD_OLED,    // text = rest of the line
-  CMD_FFTEST,
+  CMD_FFTEST,  // a[0..2] = up to 3 PWM levels, 1..FFTEST_MAX_PWM; unused slots 0 (none = defaults)
   CMD_INVALID  // unknown word, wrong argument count or out-of-range value
 };
 
@@ -59,6 +59,7 @@ struct Command {
 const long VEL_LIMIT_MM_S = 500;
 const long VEL_LIMIT_MRAD_S = 3000;
 const long TRAY_LIMIT_DEG = 130;  // stepper travel; must equal TRAY_MAX_DEG in config.h
+const long FFTEST_MAX_PWM = 120;  // must equal MAX_PWM in config.h
 
 // Parses one line without its newline. The buffer is modified (split into words).
 Command parseLine(char* line);

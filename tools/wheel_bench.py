@@ -3,7 +3,7 @@
 300 ms and the Wi-Fi link to the Mac stalls for longer). Works with the Jetson's Python 3.6.
 
   python3 wheel_bench.py watch   # hand test: live encoder counts and turns, never arms
-  python3 wheel_bench.py ff      # FFTEST: open-loop PWM 60/90/120 both ways, fits FF_A/FF_B
+  python3 wheel_bench.py ff      # FFTEST: open-loop PWM 30/40/50/60/90/120 both ways (--levels), fits FF
   python3 wheel_bench.py hold    # speed hold 100/200/300 mm/s both ways, then strafe and turn
 
 ff and hold drive the motors: wheels raised, 12 V on, a hand on the cut-off switch. They ask you
@@ -172,26 +172,40 @@ def fit_line(points):
 
 def run_ff(bench, args):
     confirm_lifted()
-    bench.send('ARM')
-    bench.wait_for('OK ARM', 2.0)
-    bench.send('FFTEST')
-    print('FFTEST running (about 13 s). Press Ctrl-C to abort.')
+    levels = sorted(set(args.levels))
+    chunks = [levels[i:i + 3] for i in range(0, len(levels), 3)]  # FFTEST takes up to 3 levels
     rows = []
-    end = time.time() + 30
-    while time.time() < end:
-        for text in bench.lines():
-            if text.startswith('FF '):
-                nums = [int(p) for p in text.split()[1:]]
-                rows.append((nums[0], nums[1:5]))
-                print('  PWM %+4d   ' % nums[0] +
-                      '   '.join('%s %+5d mm/s' % (n, v) for n, v in zip(WHEELS, nums[1:5])))
-            elif text.startswith('DONE FFTEST'):
-                end = 0
-                break
-            elif text.startswith('ERR'):
-                raise RuntimeError('Mega: ' + text)
-    if len(rows) != 6:
-        raise RuntimeError('expected 6 FF lines, got %d' % len(rows))
+    for chunk in chunks:
+        bench.send('ARM')   # FFTEST disarms when it ends
+        bench.wait_for('OK ARM', 2.0)
+        bench.send('FFTEST ' + ' '.join(str(v) for v in chunk))
+        print('FFTEST %s forward, then reverse (about %d s). Ctrl-C aborts.'
+              % ('/'.join(str(v) for v in chunk), 4 * len(chunk) + 1))
+        got, end = 0, time.time() + 8 * len(chunk) + 10
+        while time.time() < end:
+            for text in bench.lines():
+                if text.startswith('FF '):
+                    nums = [int(p) for p in text.split()[1:]]
+                    rows.append((nums[0], nums[1:5]))
+                    got += 1
+                    print('  PWM %+4d   ' % nums[0] +
+                          '   '.join('%s %+5d mm/s' % (n, v) for n, v in zip(WHEELS, nums[1:5])))
+                elif text.startswith('DONE FFTEST'):
+                    end = 0
+                    break
+                elif text.startswith('ERR'):
+                    raise RuntimeError('Mega: ' + text)
+        if got != 2 * len(chunk):
+            raise RuntimeError('expected %d FF lines, got %d' % (2 * len(chunk), got))
+        time.sleep(0.5)
+
+    print('\nLowest PWM at which each wheel turns (> 20 mm/s), forward / reverse:')
+    for i, name in enumerate(WHEELS):
+        first = []
+        for sign in (1, -1):
+            moving = [abs(p) for p, s in rows if p * sign > 0 and s[i] * sign > 20]
+            first.append(str(min(moving)) if moving else 'none')
+        print('  %s: %s / %s' % (name, first[0], first[1]))
 
     print('\nPer wheel (speeds as wheel-forward; reverse levels flipped):')
     problems, fits, top = [], [], []
@@ -207,13 +221,14 @@ def run_ff(bench, args):
                                 'counting' % (name, pwm, speeds[i]))
             if along > 20:
                 pts.append((float(along), float(abs(pwm))))
-        fwd120 = [s[i] for p, s in rows if p == MAX_PWM][0]
-        rev120 = -[s[i] for p, s in rows if p == -MAX_PWM][0]
-        top.append(min(fwd120, rev120))
-        diff = abs(fwd120 - rev120) / max(1.0, (fwd120 + rev120) / 2) * 100
+        hi = max(levels)  # forward/reverse balance and top speed at the highest level tested
+        fwd_hi = [s[i] for p, s in rows if p == hi][0]
+        rev_hi = -[s[i] for p, s in rows if p == -hi][0]
+        top.append(min(fwd_hi, rev_hi))
+        diff = abs(fwd_hi - rev_hi) / max(1.0, (fwd_hi + rev_hi) / 2) * 100
         fit = fit_line(pts) if len(pts) >= 2 else None
         fits.append(fit)
-        print('  %s: at PWM 120 fwd %4d / rev %4d mm/s (differ %3.0f %%)' % (name, fwd120, rev120, diff) +
+        print('  %s: at PWM %d fwd %4d / rev %4d mm/s (differ %3.0f %%)' % (name, hi, fwd_hi, rev_hi, diff) +
               ('   fit PWM = %.1f + %.3f x mm/s' % fit if fit else '   no fit'))
         if diff > 15:
             problems.append('%s forward and reverse differ by %.0f %%' % (name, diff))
@@ -226,8 +241,8 @@ def run_ff(bench, args):
     print('  RR (M4): reverse sign follows the command (no channel B), so WATCH it turn the right way.')
 
     reach = min(top)
-    print('\nSlowest wheel at PWM 120 (the cap): %d mm/s.' % reach)
-    if reach < 330:
+    print('\nSlowest wheel at PWM %d: %d mm/s.' % (max(levels), reach))
+    if max(levels) == MAX_PWM and reach < 330:
         print('  -> 300 mm/s cannot be held within 10 %% at the cap; hold test top speed: %d mm/s'
               % (int(reach * 0.85) // 10 * 10))
     if any('WRONG WAY' in x or 'barely moves' in x for x in problems):
@@ -377,6 +392,8 @@ def main():
     p.add_argument('--log-dir', default=os.path.expanduser('~/Documents/David/wheel_bench'))
     p.add_argument('--wheel-mm', type=float, default=WHEEL_DIAMETER_MM,
                    help='must match the flashed firmware (config.h)')
+    p.add_argument('--levels', type=int, nargs='+', default=[30, 40, 50, 60, 90, 120],
+                   help='ff: open-loop PWM levels, 1..%d, at most 6' % MAX_PWM)
     p.add_argument('--speeds', type=int, nargs='+', default=[100, 200, 300], help='hold: mm/s')
     p.add_argument('--seconds', type=float, default=3.0, help='hold: time per step')
     p.add_argument('--measure', type=float, default=1.5, help='hold: judged over the last N s')
@@ -384,6 +401,8 @@ def main():
     args = p.parse_args()
     if any(s <= 0 or s > MAX_WHEEL_MM_S for s in args.speeds):
         p.error('--speeds must be 1..%d' % MAX_WHEEL_MM_S)
+    if any(v < 1 or v > MAX_PWM for v in args.levels) or not 2 <= len(set(args.levels)) <= 6:
+        p.error('--levels: 2 to 6 different values, each 1..%d' % MAX_PWM)
     if args.measure >= args.seconds:
         p.error('--measure must be shorter than --seconds')
 
