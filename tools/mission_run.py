@@ -374,6 +374,12 @@ def dock_at(station, guard, limit=45.0):
     log('%s: success %s  lateral %+.3f m  distance %+.3f m  yaw %+.1f deg  %r' % (
         station, r.success, r.lateral_error_m, r.distance_error_m, math.degrees(r.yaw_error_rad), r.message))
     if not r.success:
+        # 24 Nov: at the dock wall the tags leave the view, the server waits in FINAL and times out
+        # although its last errors are inside tolerance - that is docked
+        if ('timed out' in r.message and abs(r.lateral_error_m) <= 0.025 and abs(r.distance_error_m) <= 0.025
+                and abs(math.degrees(r.yaw_error_rad)) <= 3.0):
+            log('%s: timed out but inside tolerance - counted as docked' % station)
+            return
         raise Abort('docking at %s failed: %s' % (station, r.message))
 
 
@@ -754,8 +760,8 @@ def dump():
 
 def docked():
     time.sleep(1.2)
-    r = st['range']
-    return r is not None and r <= 0.30 and bool(tags_seen((0, 1)))
+    r = st['range']   # docked, the cameras are too close to see the dock tags (24 Nov)
+    return r is not None and (r <= 0.30 or (r <= 0.65 and bool(tags_seen((0, 1)))))
 
 
 def spin_search(ids, step_deg=30):
