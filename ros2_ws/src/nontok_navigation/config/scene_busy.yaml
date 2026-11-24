@@ -1,0 +1,13 @@
+# A busier room for the simulation (fake:=true scene:=busy). Same units and frame as
+# lab_layout.yaml. Invented, like the placeholder room.
+#   tables  are drawn onto the map: the planner knows them and routes round them.
+#   people  are on no map: only the simulated ultrasonics see them. Each walks back and forth
+#           along its path at `speed` m/s; `radius` is how wide the ultrasonics see it.
+tables:
+  - {name: middle table, rect: [-1.90, 0.75, -1.30, 1.25]}
+  - {name: side table,   rect: [0.00, 1.50, 0.50, 2.00]}
+
+# Person A passes between the tables; the gap leaves 0.7 m beside them, enough for the robot.
+people:
+  - {name: person A, path: [[-0.40, -0.45], [-0.40, 2.45]], speed: 0.5, radius: 0.20}
+  - {name: person B, path: [[-2.60, 0.38], [-0.90, 0.38]],  speed: 0.4, radius: 0.20}

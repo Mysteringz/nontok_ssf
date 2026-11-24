@@ -1,4 +1,5 @@
 """Tests for the map generator, the stations and the shipped placeholder configuration."""
+import dataclasses
 import math
 import pathlib
 
@@ -64,12 +65,15 @@ def test_station_frames_and_poses():
     assert approach_pose(dock, TAGS) == pytest.approx((-0.5, 0.0, 0.0), abs=1e-9)
     electrical = approach_pose(STATIONS['electrical'], TAGS)
     assert electrical == pytest.approx((-1.0, 2.1, math.pi / 2), abs=1e-9)        # below the wall, facing +y
+    assert not any(station.back_in for station in STATIONS.values())
+    backed = approach_pose(dataclasses.replace(STATIONS['electrical'], back_in=True), TAGS)
+    assert backed == pytest.approx((-1.0, 2.1, -math.pi / 2), abs=1e-9)           # same spot, back to the wall
 
 
 def test_every_station_is_consistent_with_tags_and_map():
     bounds, rectangles, resolution = draw_map.load_layout(str(NAV_CONFIG / 'lab_layout.yaml'))
     image = rasterise(bounds, rectangles, resolution)
-    assert set(STATIONS) == {'dock', 'pickup', 'electrical', 'mechanical', 'scraps', 'tools'}
+    assert set(STATIONS) == {'dock', 'pickup', 'electrical', 'mechanical', 'unknown', 'tools'}
     for station in STATIONS.values():
         assert tag_spacing(station, TAGS) == pytest.approx(0.30, abs=0.01)
         frame = station_frame(station, TAGS)

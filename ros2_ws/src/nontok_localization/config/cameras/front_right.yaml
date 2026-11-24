@@ -1,8 +1,22 @@
-# PLACEHOLDER: an ideal 60-degree lens at 1280x720. Replace with the real calibration:
-#   ros2 run nontok_localization calibrate_camera --device /dev/cam_... --out <this file>
-calibrated: false
+# Calibrated 24 Nov 2026: 36 robot-moved board views, focal fixed at 840 px (free fits gave 966-989 px, but then
+# front_left and front_right disagreed on the tag wall distance by 13 cm; 840 px makes them agree). 0.24 px.
+calibrated: true
 width: 1280
 height: 720
-camera_matrix: [1108.5, 0.0, 640.0, 0.0, 1108.5, 360.0, 0.0, 0.0, 1.0]
-distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
-reprojection_error_px: -1.0
+camera_matrix:
+- 840.0
+- 0.0
+- 598.551597702455
+- 0.0
+- 840.0
+- 321.5470932012739
+- 0.0
+- 0.0
+- 1.0
+distortion:
+- -0.3446196461184218
+- 0.1106940759999146
+- 0.007524756075260295
+- 0.0027879174444144263
+- 0.0
+reprojection_error_px: 0.23919790859134368

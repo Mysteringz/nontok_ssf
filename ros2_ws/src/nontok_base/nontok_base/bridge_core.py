@@ -61,6 +61,7 @@ class BridgeCore:
                  odo_timeout_s: float = 0.5, max_range: float = 1.5, range_timeout_s: float = 1.0):
         self.params = params
         self.gyro_scale = gyro_scale
+        self.yaw_from_encoders = True   # yaw_source: the gyro is not trusted (24 Nov: false turns while the motors run)
         self.cmd_timeout_s = cmd_timeout_s
         self.odo_timeout_s = odo_timeout_s
         self.range_timeout_s = range_timeout_s   # 0 = do not require the ultrasonics
@@ -196,8 +197,10 @@ class BridgeCore:
         if dt <= 0 or dt > 0.5:
             return None  # duplicate, or a gap too long to turn into a velocity
         deltas = [count_delta(new, old) for new, old in zip(odo.counts, previous.counts)]
-        dx, dy, _ = counts_to_body(deltas, self.params)
-        yaw_rate = odo.yaw_rate * self.gyro_scale
+        dx, dy, dyaw = counts_to_body(deltas, self.params)
+        # Heading from the four wheel encoders (mecanum kinematics) unless yaw_source is gyro: the camera
+        # tags correct it in the filters.
+        yaw_rate = dyaw / dt if self.yaw_from_encoders else odo.yaw_rate * self.gyro_scale
 
         # Dead-reckoned pose, for calibration tools and as a fallback. The EKF does the real fusion.
         mid_yaw = self.yaw + 0.5 * yaw_rate * dt

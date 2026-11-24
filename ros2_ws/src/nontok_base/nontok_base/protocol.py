@@ -63,7 +63,7 @@ def encode_vel(vx: float, vy: float, wz: float) -> str:
 
 
 def encode_tray(angle_deg: float) -> str:
-    return 'TRAY %d' % int(max(0, min(90, round(angle_deg))))
+    return "TRAY %d" % int(max(0, min(130, round(angle_deg))))   # firmware TRAY_MAX_DEG 130
 
 
 def encode_oled(text: str) -> str:

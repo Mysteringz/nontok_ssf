@@ -21,21 +21,23 @@ const uint8_t MOTOR_IN1[4] = {34, 37, 43, A4};
 const uint8_t MOTOR_IN2[4] = {35, 36, 42, A5};
 // Measured 23 Oct in ../Nontok with the wheels raised: positive = toward the ultrasonic end.
 const int8_t MOTOR_SIGN[4] = {1, -1, 1, -1};
-const uint8_t MIN_PWM = 60;   // below this the motors stall
+const uint8_t MIN_PWM = 60;   // not used by the controller; lifted wheels turn from PWM 30 (FFTEST 24 Nov)
 const uint8_t MAX_PWM = 120;  // commissioning cap; raise only after checkpoint CP1
 
 // ---------------- Wheel geometry and control ----------------
-const float WHEEL_DIAMETER_MM = 80.0f;       // TODO measure
+const float WHEEL_DIAMETER_MM = 80.0f;       // calipers 23 Nov; refine with the 2 m run (CP2)
 const float ENC_COUNTS_PER_REV = 660.0f;     // 11 pulses x 30 gearbox x 2 edges; TODO verify
 const float MM_PER_COUNT = 3.14159265f * WHEEL_DIAMETER_MM / ENC_COUNTS_PER_REV;
-const float ROTATION_ARM_MM = 160.0f;        // half wheelbase + half track; TODO measure
+const float ROTATION_ARM_MM = 192.5f;        // half wheelbase + half track = 165/2 + 220/2 (23 Nov)
 const float MAX_WHEEL_MM_S = 400.0f;
 const float WHEEL_DEAD_MM_S = 15.0f;         // smaller targets are treated as stop
 const float ACCEL_MM_S2 = 300.0f;
 const float ACCEL_RAD_S2 = 1.5f;
-// Feed-forward PWM = FF_A + FF_B * speed. TODO: fit per robot from the FFTEST output.
-const float FF_A = 50.0f;
-const float FF_B = 0.35f;
+// Feed-forward PWM = FF_A + FF_B * |speed|, per wheel (FL, FR, RL, RR).
+// Fitted 24 Nov with the wheels RAISED (wheel_bench ff, PWM 30-120, log ff_20261124_110542):
+// linear, every wheel turns from PWM 30. The floor adds load, so FF_A will grow: refit at CP2.
+const float FF_A[4] = {2.8f, 3.9f, 5.4f, 5.3f};
+const float FF_B[4] = {0.148f, 0.150f, 0.146f, 0.143f};
 const float WHEEL_KP = 0.15f;   // PWM per mm/s
 const float WHEEL_KI = 0.6f;    // PWM per mm/s per second
 const float WHEEL_I_MAX = 40.0f;
@@ -45,8 +47,10 @@ const float WHEEL_I_MAX = 40.0f;
 // Channel B: D31 (PC6), D38 (PD7), D49 (PL0), A1 (PF1).
 const uint8_t ENC_A_PIN[4] = {18, 19, 3, 2};
 const uint8_t ENC_B_PIN[4] = {31, 38, 49, A1};
-// +1 if the count rises when the wheel rolls the robot forward. TODO verify at CP1.
-const int8_t ENC_SIGN[4] = {1, -1, 1, -1};
+// +1 if the count rises when the wheel rolls the robot forward. Hand test 23 Nov (wheels raised,
+// 10 turns each way): FL, FR, RL all counted DOWN when rolled forward with {1, -1, 1, -1}, so the
+// whole set is negated. RR (M4) has no channel B and ignores this; its +1 follows the pattern only.
+const int8_t ENC_SIGN[4] = {-1, 1, -1, 1};
 // The Mega's A1 header pin is reported broken, so wheel 4 takes its direction from the sign of
 // its last PWM command. Set to 0 once channel B of M4 is confirmed readable.
 #ifndef M4_DIR_FROM_COMMAND
@@ -68,14 +72,19 @@ const uint8_t IMU_ADDRESS = 0x68;
 const float GYRO_SIGN = -1.0f;  // counter-clockwise positive; confirmed 27 Oct in ../Nontok
 const unsigned long I2C_TIMEOUT_US = 25000;
 
-// ---------------- Tray servo ----------------
-const uint8_t TRAY_SERVO_PIN = 46;      // TODO confirm on the shield SERVO row (else 44 or 45)
-const uint8_t TRAY_REST_SERVO_DEG = 10; // servo angle with the tray flat; TODO tune
-const int8_t TRAY_SERVO_DIR = 1;        // +1 if a larger servo angle lifts the tray
-const uint8_t TRAY_MAX_DEG = 60;
-const uint8_t TRAY_UP_DEG_PER_CYCLE = 2;    // 50 deg/s
-const uint8_t TRAY_DOWN_DEG_PER_CYCLE = 4;  // 100 deg/s
-const uint16_t TRAY_DETACH_MS = 500;        // release the servo this long after returning flat
+// ---------------- Tray stepper (dump) ----------------
+// Stepper on the shield PL header through include/stepper_driver.h (from ../Nontok, wiring
+// verified 21 Nov): STEP D46, DIR D45, EN D44, 1/16 microstepping = 3200 steps per turn.
+// Open loop: 0 deg is where the tray is at power-up, so power the robot with the tray flat.
+// TRAY <deg> is in stepper degrees from there. 0..130 is the travel ../Nontok allows
+// (STEPPER_MAX_DEG, 130 = dump). The parser refuses targets outside it (ERR UNKNOWN);
+// traySetTarget clips as a second guard. Keep equal to TRAY_LIMIT_DEG in nontok_core.h.
+const uint8_t TRAY_MAX_DEG = 130;
+const bool TRAY_STEPPER_INVERT = false;      // true if a positive move lowers the tray
+const uint16_t TRAY_STEP_PERIOD_US = 400;    // cruise, 0.78 turn/s (../Nontok default)
+const uint16_t TRAY_START_PERIOD_US = 1600;  // first and last step of the ramp
+const uint16_t TRAY_RAMP_STEPS = 400;
+const uint16_t TRAY_RELEASE_MS = 500;        // driver off this long after reaching 0 deg
 
 // ---------------- Voltage sensing (optional) ----------------
 // Set to 1 once the divider is wired; otherwise the value is reported as 0.

@@ -4,10 +4,13 @@
 #   standoff_m       final position after alignment            TODO: tune with the real tray and boxes
 #   approach_m       Nav2 goal; alignment starts from here
 #   lateral_offset_m + = stop right of centre (facing the tags)
+#   back_in          true = reverse up to the tags and stop with the BACK to them: the tray tips
+#                    out over the rear of the robot. The rear camera does the alignment.
+#                    Not used now: the tray tips over the ultrasonic end, which is the front.
 stations:
   dock:       {tag_ids: [0, 1],   standoff_m: 0.60, approach_m: 1.10, is_dock: true}
   pickup:     {tag_ids: [2, 3],   standoff_m: 0.50, approach_m: 0.90}
-  electrical: {tag_ids: [10, 11], standoff_m: 0.35, approach_m: 0.90}
+  electrical: {tag_ids: [10, 11], standoff_m: 0.38, approach_m: 0.90}   # 24 Nov: robot pressing the box (edge 22 cm from the wall), dump landed
   mechanical: {tag_ids: [12, 13], standoff_m: 0.35, approach_m: 0.90}
-  scraps:     {tag_ids: [14, 15], standoff_m: 0.35, approach_m: 0.90}
+  unknown:    {tag_ids: [14, 15], standoff_m: 0.35, approach_m: 0.90}   # items the classifier cannot name: sorted by hand
   tools:      {tag_ids: [16, 17], standoff_m: 0.35, approach_m: 0.90}

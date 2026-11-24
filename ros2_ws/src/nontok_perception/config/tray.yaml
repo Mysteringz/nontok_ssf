@@ -1,6 +1,10 @@
 tray_node:
   ros__parameters:
     device: /dev/cam_tray
+    # A tag detector whose camera is released while the tray camera is on, for camera sets
+    # that cannot all stream together. "": the current set (two XWF front + this camera)
+    # streams together.
+    pause_detector: ""
     width: 640
     height: 480
     # Tray floor corners in the image as fractions: x1 y1 x2 y2 x3 y3 x4 y4. TODO set once mounted.

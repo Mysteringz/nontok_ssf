@@ -7,7 +7,13 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="n
 # Cameras, by the USB port they are plugged into (identical cameras cannot be told apart
 # otherwise). Find each port with:  udevadm info -a /dev/video0 | grep KERNELS
 # then replace the KERNELS values below and label the ports on the robot.
+# Three cameras (no rear camera). Front: the two "XWF 1080P PC Camera" (1bcf:2285), whose
+# bandwidth the patched uvcvideo can cap. Tray: the "1080P USB Camera" (2bdf:0289), which
+# always reserves the most bandwidth: only one of those fits on the bus. All three stream
+# together (tested 2026-11-21, MJPEG 640x480: 30 + ~24 + ~19 fps).
+# Ports as mounted on the robot (2026-11-23, checked by plugging in one at a time): left 1-2.1,
+# right 1-2.3, tray 1-2.2. 1-2.4 carries a small hub with the USB speaker and the Mega.
 SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.1", SYMLINK+="cam_front_left"
-SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.2", SYMLINK+="cam_front_right"
-SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.3", SYMLINK+="cam_rear"
-SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.4", SYMLINK+="cam_tray"
+SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.3", SYMLINK+="cam_front_right"
+SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.2", SYMLINK+="cam_tray"
+# SUBSYSTEM=="video4linux", ATTR{index}=="0", KERNELS=="1-2.4", SYMLINK+="cam_rear"

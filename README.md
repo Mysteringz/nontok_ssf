@@ -34,6 +34,39 @@ NONTOK_DOCKER_ARGS="--cpus 1.5" tools/sim_in_docker.sh bolt   # the same on a sl
 
 Follow PLAN.md section 8 from CP0. In short:
 
+To watch the robot live from the Mac (map, state, sensors, cameras, events) in a browser:
+
+```
+tools/mac_viz.sh              # connect to the running robot and open the dashboard
+tools/mac_viz.sh sim bolt     # or: start a simulated mission on the Jetson and watch that
+tools/mac_viz.sh stop
+```
+
+Demo without the robot (progress reports):
+
+```
+tools/demo.sh bolt            # on the Mac: simulated mission in Docker, dashboard at localhost:8081
+tools/demo.sh busy bolt       # the same in a room with two tables (on the map) and two walking people (not on it)
+tools/demo.sh voice           # then: say "Nontok" to the Mac (or press Enter); it answers on the Mac's speakers
+tools/demo.sh stop
+tools/jetson.sh camdemo       # on the Jetson: real cameras, wake word and dashboard only - no motors;
+                              # watch with tools/mac_viz.sh
+```
+
+On the Jetson run without the desktop (`sudo systemctl set-default multi-user.target`; back with
+`graphical.target`) and call the robot no sooner than a minute after starting the software.
+
+On the Jetson everything runs through `tools/jetson.sh` (from `~/nontok`):
+
+```
+tools/jetson.sh build                                  # colcon build in the container
+tools/jetson.sh cameras                                # which camera is on which USB port
+tools/jetson.sh run ros2 run nontok_base wheel_check   # FIRST power-on: robot on blocks
+tools/jetson.sh run ros2 run nontok_voice listen --model src/nontok_voice/models/nontok.onnx --device XWF
+tools/jetson.sh launch fake:=true fake_item:=bolt      # whole mission, simulated
+tools/jetson.sh launch                                 # the real robot
+```
+
 1. Jetson (an original Nano on Ubuntu 18.04, so ROS 2 runs in Docker only; PLAN.md 14.4): load the
    `nontok-dev` image, install `ros2_ws/src/nontok_bringup/system/99-nontok.rules` on the host,
    then inside the container `cd ros2_ws && colcon build --symlink-install`.
@@ -45,12 +78,27 @@ Follow PLAN.md section 8 from CP0. In short:
 3. Mega: wheels raised, flash, then work through CP1 (`ENC_SIGN`, `M4_DIR_FROM_COMMAND`, `FFTEST`).
 4. `ros2 launch nontok_bringup teleop.launch.py`, then `ros2 run nontok_base calibrate_odometry straight|strafe|spin|square`.
 
+## Switching the Mega firmware
+
+The robot's Mega holds one program at a time: this repo's firmware (`nontok_ssf`, used by
+`tools/wheel_bench.py` and the ROS bridge) or the teammate's `HARDWARE_PROBE_2` from the Nontok repo
+(used by its probe dashboard). Only the tools of the firmware on the Mega work.
+
+1. On the Mac, after committing: `tools/build_mega_hex.sh [path/to/Nontok]` builds both, names each hex
+   after its commit and copies them to the Jetson (refuses uncommitted firmware changes; `DIRTY=1` allows them).
+2. On the Jetson: `tools/mega_firmware.sh probe`, `ssf` or `which`. Writes and verifies (probe ~30 s,
+   ssf ~7 s), then confirms the boot line. Nothing moves; the port must be free.
+
+The probe dashboard runs on the Mac (Python 3.7 or newer), so with the Mega's USB on the Jetson it
+connects over Bluetooth (HC-06), or move the USB cable to the Mac.
+
 ## Layout
 
 ```text
 firmware/nontok_ssf_mega/   Mega firmware (PlatformIO)
 ros2_ws/src/                ten ROS 2 packages; each keeps its logic in plain Python modules with tests
 training/                   dataset capture, training, export and scoring for the item classifier
+  video/                    item classifier from laptop videos: record, extract, train, test
 tools/                      preflight check, mission log report, bag recording, simulated mission
 docker/                     ROS 2 Humble image for building and simulating on a laptop
 ```

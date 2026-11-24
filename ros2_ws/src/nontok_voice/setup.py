@@ -21,6 +21,7 @@ setup(
         ('share/' + package_name + '/launch', files('launch/*')),
         ('share/' + package_name + '/urdf', files('urdf/*')),
         ('share/' + package_name + '/models', files('models/*')),
+        ('share/' + package_name + '/sounds', files('sounds/*')),
         ('share/' + package_name + '/system', files('system/*')),
     ],
     install_requires=['setuptools'],
@@ -33,7 +34,10 @@ setup(
     entry_points={
         'console_scripts': [
             'wake_node = nontok_voice.wake_node:main',
-            'trigger = nontok_voice.trigger:main'
+            'trigger = nontok_voice.trigger:main',
+            'listen = nontok_voice.listen:main',
+            'speech_node = nontok_voice.speech_node:main',
+            'eval_wake = nontok_voice.eval_wake:main'
         ],
     },
 )

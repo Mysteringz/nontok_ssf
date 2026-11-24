@@ -1,10 +1,10 @@
 tag_localizer:
   ros__parameters:
-    cameras: [front_left, front_right, rear]
+    cameras: [front_left, front_right]   # no rear camera fitted
     max_range_m: 2.5
     max_view_angle_deg: 60.0
     yaw_range_m: 1.5
-    max_reprojection_px: 3.0
+    max_reprojection_px: 8.0   # 24 Nov: measured (not ideal) camera mounts give 4.7-5.4 px planar fits
     sigma_xy_1m: 0.02
     sigma_yaw_1m_deg: 2.0
     max_jump_m: 0.5

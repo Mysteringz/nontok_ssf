@@ -1,7 +1,12 @@
 wake_node:
   ros__parameters:
-    device: ""            # empty = default microphone; else a sounddevice name or index
-    threshold: 0.5        # TODO choose with: python3 -m nontok_voice.eval_wake
+    # Part of a sounddevice name, or an index; empty = default microphone. The XWF cameras'
+    # microphones work as delivered. The other camera model's capture volume is zero until
+    # raised with: amixer -c <card> set Mic 80%
+    device: "XWF"
+    # Scores from this model are nearly all-or-nothing, so the threshold matters little.
+    # Try it with: ros2 run nontok_voice listen --model <models>/nontok.onnx --device XWF
+    threshold: 0.6
     window: 3
     needed: 2
     refractory_s: 3.0

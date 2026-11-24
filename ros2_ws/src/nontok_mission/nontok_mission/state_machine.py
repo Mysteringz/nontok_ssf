@@ -72,12 +72,13 @@ class MissionConfig:
     item_wait_s: float = 120.0
     classify_retries: int = 2
     classify_retry_wait_s: float = 4.0
-    tray_up_deg: float = 50.0
+    tray_up_deg: float = 120.0
     dump_hold_s: float = 1.5
     dump_settle_s: float = 1.0
     dump_repeats: int = 1
     localization_grace_s: float = 5.0
     dock_requires_charge: bool = False     # set true once the charge-sense wiring exists
+    unknown_station: str = ''              # where unidentified items go; '' = carry them back to the dock
 
 
 class Mission:
@@ -264,7 +265,7 @@ class Mission:
                 return
             if now - self._step_time < cfg.classify_retry_wait_s or not (state == TRAY_OCCUPIED and stable):
                 if now - self._step_time > cfg.item_wait_s:
-                    self._go(S4_LEAVE_PICKUP, now, 'UNKNOWN_ITEM')
+                    self._unknown_item(now)
                 return
             self._step = 'classify'
         ok, item, station, confidence = self.api.classify()
@@ -276,10 +277,16 @@ class Mission:
             return
         self._count += 1
         if self._count > cfg.classify_retries:
-            self._go(S4_LEAVE_PICKUP, now, 'UNKNOWN_ITEM')   # carry it home rather than guess
+            self._unknown_item(now)   # never guess: manual-sorting station, or home
             return
         self.api.show('REPOSITION ITEM')
         self._step, self._step_time = 'wait', now
+
+    def _unknown_item(self, now: float) -> None:
+        """Could not name the item: take it to the manual-sorting station if there is one."""
+        if self.cfg.unknown_station:
+            self.target, self.item = self.cfg.unknown_station, 'unknown'
+        self._go(S4_LEAVE_PICKUP, now, 'UNKNOWN_ITEM')
 
     def _s4_leave_pickup(self, now: float) -> None:
         if self._fresh:

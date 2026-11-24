@@ -3,8 +3,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
 
@@ -19,12 +20,13 @@ def generate_launch_description():
         param_rewrites={
             'default_nav_to_pose_bt_xml': os.path.join(share, 'config', 'nav_to_pose_no_spin.xml'),
             'default_nav_through_poses_bt_xml': os.path.join(share, 'config', 'nav_through_poses_no_spin.xml'),
-            'yaml_filename': os.path.join(share, 'config', 'map.yaml'),
+            'yaml_filename': LaunchConfiguration('map'),
             'footprint': footprint_string(robot),
         },
         convert_types=True,
     )
     return LaunchDescription([
+        DeclareLaunchArgument('map', default_value=os.path.join(share, 'config', 'map.yaml')),
         Node(package='nav2_map_server', executable='map_server', name='map_server', parameters=[params]),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager', name='lifecycle_manager_map',
              parameters=[{'autostart': True, 'node_names': ['map_server']}]),

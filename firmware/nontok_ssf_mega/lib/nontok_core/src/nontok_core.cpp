@@ -108,6 +108,13 @@ Command parseLine(char* line) {
   if (type == CMD_INVALID) return make(CMD_INVALID);
 
   Command c = make(type);
+  if (type == CMD_FFTEST) {  // 0 to 3 optional levels
+    for (uint8_t i = 0; i < 3; ++i) {
+      const char* arg = nextWord(&cursor);
+      if (arg == 0) break;
+      if (!parseLong(arg, &c.a[i]) || c.a[i] < 1 || c.a[i] > FFTEST_MAX_PWM) return make(CMD_INVALID);
+    }
+  }
   for (uint8_t i = 0; i < wanted; ++i) {
     if (!parseLong(nextWord(&cursor), &c.a[i])) return make(CMD_INVALID);
   }

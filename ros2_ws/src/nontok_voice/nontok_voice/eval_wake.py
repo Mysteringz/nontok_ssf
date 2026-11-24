@@ -15,7 +15,7 @@ import wave
 
 import numpy as np
 
-from .wake_logic import WakeTrigger
+from .wake_logic import WakeTrigger, load_model
 
 BLOCK, SAMPLE_RATE = 1280, 16000
 
@@ -44,8 +44,7 @@ def main(argv=None):
     parser.add_argument('--positives', required=True)
     parser.add_argument('--background', required=True)
     args = parser.parse_args(argv)
-    from openwakeword.model import Model
-    model = Model(wakeword_models=[args.model], inference_framework='onnx')
+    model = load_model(args.model)
 
     positives = [scores_for(model, read_wav(p)) for p in sorted(glob.glob(os.path.join(args.positives, '*.wav')))]
     background, hours = [], 0.0

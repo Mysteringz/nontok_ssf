@@ -17,6 +17,7 @@
   <exec_depend>nontok_perception</exec_depend>
   <exec_depend>nontok_voice</exec_depend>
   <exec_depend>nontok_mission</exec_depend>
+  <exec_depend>nontok_viz</exec_depend>
   <exec_depend>robot_localization</exec_depend>
 
   <test_depend>python3-pytest</test_depend>

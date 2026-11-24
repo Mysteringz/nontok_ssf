@@ -9,11 +9,12 @@ mission_node:
     item_wait_s: 120.0
     classify_retries: 2
     classify_retry_wait_s: 4.0
-    tray_up_deg: 50.0            # TODO tune with real items
+    tray_up_deg: 120.0           # dump angle, stepper deg (field 24 Nov: 130 tipped the item out; 120 chosen)
     dump_hold_s: 1.5
     dump_settle_s: 1.0
     dump_repeats: 1
     localization_grace_s: 5.0
+    unknown_station: unknown     # unidentified items go here for manual sorting ('' = back to the dock)
     dock_requires_charge: false  # set true once the charge-sense divider is wired (firmware CHARGE_SENSE_FITTED)
     charge_threshold_v: 4.0
     wait_for_nav2: true

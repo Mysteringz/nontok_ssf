@@ -36,7 +36,7 @@ No LiDAR, no SLAM, no new sensors. Budget cap: HK$500.
 | A1 | The computer is a **Jetson Orin Nano** (JetPack 6, Ubuntu 22.04). `../Nontok/README.md` says "Jetson Nano" with a JetPack 4 container. | An original Jetson Nano cannot run ROS 2 Humble natively and has far less compute. If it is the old Nano, ROS 2 must run in Docker and the camera rates in §5.3 must be halved. |
 | A1 — settled 16 November 2026 | **It is the original Jetson Nano Developer Kit, 4 GB** (JetPack 4.6, L4T R32.6.1, Ubuntu 18.04). | ROS 2 Humble runs in Docker; see section 14.4. Wherever sections 1–13 say Orin Nano, JetPack 6 or a native install, section 14.4 applies instead. |
 | A2 | The four cameras are USB UVC webcams that can output 1280×720 MJPEG. | Sets tag range (§5.2) and USB layout (§3.4). |
-| A3 | The tray tips **forward**, over the front of the robot. | The front cameras and front ultrasonic then do the station alignment. If it tips to the rear, the rear camera does it and §7.5 is mirrored. |
+| A3 | The tray tips over the **ultrasonic end** of the robot, and that end is the front (`base_link` +x). Decided 17 Nov 2026: the top assembly is turned round so that the tray's tipping edge and the ultrasonics are at the same end. | The robot drives, senses and tips toward the same end, so stations are approached nose-first with the front cameras and the front ultrasonic. The two tag cameras must also be at that end, one at the other. `back_in: true` in `stations.yaml` remains available for a station that must be reversed into (rear camera, nothing senses behind). |
 | A4 | One preset pickup point. | The wake word alone cannot say which bench is calling. Several pickup points is a stretch goal (§11). |
 | A5 | One item per trip. | Keeps the classifier and tray logic simple. |
 | A6 | The wireless charging dock and receiver from the `../Nontok` proposal (module 3) exist or are being built by that team. | This plan covers docking onto it, not building the charger. |
@@ -75,9 +75,9 @@ Division of work: the Mega does everything time-critical (wheel control, sensor 
 |---|---|---|
 | Controller | Arduino Mega 2560 (clone, CH340 USB, VID:PID 1A86:7523) | Board replaced 27 Oct |
 | Motor shield | MOEBIUS TECH 4Motor&9Servo, 2× TB6612FNG, updated (2024) revision | `docs/hardware.md` |
-| Wheels | 4× mecanum, 80 mm diameter (kit value) | **TODO** measure diameter |
+| Wheels | 4× mecanum, 80 mm diameter (calipers, 23 Nov) | Refine with the 2 m straight run (CP2) |
 | Motors | DC gear motors with 11-pulse encoders, 1:30 gearbox (kit value) | **TODO** verify by turning a wheel 10 revolutions |
-| Rotation arm | 160 mm (half wheelbase + half track) | Placeholder in `config.h`; **TODO** measure |
+| Rotation arm | 192.5 mm = half wheelbase + half track (wheelbase 165 mm, track 220 mm between wheel centres) | Measured 23 Nov |
 | Gyro | MPU6050 at I²C 0x68, on the shield IMU header | Confirmed 27 Oct |
 | Ultrasonics | 5× HC-SR04-type at +90°, +45°, 0°, −45°, −90° | Confirmed 27 Oct |
 | OLED | SSD1306 128×32, I²C 0x3c, no reset wire | Confirmed |
@@ -123,7 +123,7 @@ New pins proposed for this task:
 
 | Function | Pin | Notes |
 |---|---|---|
-| Tray dump servo signal | **D46** | Confirm D46 is exposed on the shield SERVO row; alternatives D44, D45. Uses Timer5, which no motor PWM pin needs |
+| Tray dump stepper STEP / DIR / EN | **D46 / D45 / D44** | DRV8825/A4988 on the shield PL header, 1/16 microstepping (3200 steps/turn), 12 V motor supply; verified 21 Nov in ../Nontok. EN LOW = driver on |
 | Tray-home switch (optional) | D26 | Free on the updated shield (legacy M4 pin) |
 | Charge-receiver voltage sense | **A8** | Through a resistor divider; A0 is taken by an LDR |
 | Motor battery voltage sense (optional) | A9 | Through a divider; for a low-battery return |
@@ -374,7 +374,7 @@ Jetson → Mega:
 | `ARM` / `DISARM` | `OK ARM` / `OK DISARM` | Enable or disable motor output |
 | `VEL <vx> <vy> <wz>` | none | Body velocity in mm/s, mm/s, mrad/s. Resend at least every 300 ms while moving |
 | `STOP` or `!` | `OK STOP` | Stop and disarm immediately |
-| `TRAY <deg>` | `OK TRAY`, then `DONE TRAY` | Move the tray servo to an angle at a limited rate |
+| `TRAY <deg>` | `OK TRAY`, then `DONE TRAY` | Move the tray stepper to 0..130° from its power-up position (other values: `ERR UNKNOWN`); about 1 s for a full dump. `STOP`/`!` halts it with no `DONE` |
 | `CAL` | `OK CAL` | Re-measure gyro bias (robot must be still, about 1 s) |
 | `OLED <text>` | none | Optional: show up to 16 characters on the OLED (state or fault reason) |
 
@@ -452,8 +452,8 @@ Stations are categories, not objects, so the model learns specific item types an
 
 | Item | Spec |
 |---|---|
-| Tray angle | 0° rest, 45–55° tipped (**TODO** tune with real items) |
-| Servo rate | About 60 °/s up, 90 °/s down |
+| Tray angle | Stepper 0° rest, 130° tipped: the 0–130° travel allowed in ../Nontok (dashboard models it as about 55° of bed tilt) |
+| Stepper rate | 400 µs/step cruise with a 400-step ramp: 0→130° in about 1 s. Driver holds torque until the tray is back at 0°. Power up with the tray flat: 0° is the power-up position |
 | Hold | 1.5 s at the top |
 | Robot during dump | Stationary and disarmed |
 | Verification | Tray camera empty check; one retry |
@@ -631,9 +631,9 @@ Cut in this order, keeping a complete demo at each step:
 
 | Value | Used in | Measured |
 |---|---|---|
-| Wheel diameter (mm) | Odometry | |
+| Wheel diameter (mm) | Odometry | 80 (calipers, 23 Nov; refine at CP2) |
 | Encoder counts per wheel revolution | Odometry | |
-| Rotation arm L (mm) | Kinematics | |
+| Rotation arm L (mm) | Kinematics | 192.5 (wheelbase 165, track 220, 23 Nov) |
 | Robot footprint, length × width (mm) | Nav2 | |
 | Strafe scale factor | Odometry | |
 | Gyro scale factor | Local EKF | 0.991 (27 Oct, re-check) |
@@ -815,7 +815,7 @@ Main loop, every 40 ms:
 Specific implementation points:
 
 - **Encoder interrupt.** Channel A pins map to external interrupts INT3 (D18), INT2 (D19), INT5 (D3), INT4 (D2), attached on `CHANGE`. Each handler reads A and B straight from the port registers (B is PC6, PD7, PL0, PF1) and adds +1 or −1 depending on whether they are equal. A compile-time flag `M4_DIR_FROM_COMMAND` makes wheel 4 use the sign of its last PWM instead.
-- **Feed-forward constants.** Found once by a bench routine (`FFTEST` command, wheels raised): hold PWM 60, 90, 120, 150 for 2 s each, print the steady speed, fit a line per wheel.
+- **Feed-forward constants.** Found once by a bench routine (`FFTEST` command, wheels raised): `FFTEST [a [b [c]]]` runs up to 3 PWM levels (1..MAX_PWM; default 60 90 120) forward then reverse, 1 s settle + 1 s measured each, and prints `FF <pwm> <mm/s x4>`; `tools/wheel_bench.py ff --levels ...` runs up to 6 and fits a line per wheel.
 - **PI starting gains.** Kp = 0.15 PWM per mm/s, Ki = 0.6 PWM per mm/s per second, integral clamped to ±40 PWM. Targets below 15 mm/s are treated as zero, because the motors stall under PWM 60.
 - **Parser.** Fixed 48-byte buffer, `strtol` only, no `String` objects. A `!` byte stops the motors the moment it is read, before the line is complete. Unknown or over-long lines produce `ERR` and do not change state.
 - **Ultrasonic.** `pulseIn` with a 15,000 µs timeout. Encoder interrupts during the pulse shorten the reading by at most about 2–3 % at full speed, which is acceptable for obstacle detection.
@@ -1253,13 +1253,33 @@ First implementation pass, 12 November 2026, done without the robot. Where this 
 | WP10 mission | State machine, ROS wrapper, launch files | 23 tests: every station and every failure branch | CP10 |
 | WP11 tools | `preflight.py`, `mission_report.py`, `record_bag.sh` | Report logic checked | — |
 
-Test count: 120 Python tests and 14 firmware host tests, all passing.
+Test count: 130 Python tests and 14 firmware host tests, all passing.
 
 Second pass, same day, in a ROS 2 Humble container (`docker/Dockerfile`): `colcon build` passes for all ten packages, the full launch starts with `fake:=true`, and a simulated mission (`tools/sim_in_docker.sh <item>`) completed for all four stations in 108–165 s. The simulation has no camera images, wheel slip or obstacles.
 
 Third pass, 13 November 2026: docking in those runs ended 3–30 mm from the true dock, and in repeated trials up to 34 mm and 20° off while reporting success. Cause: inside the dock server the sensor subscriptions shared an executor with the long-running action and were starved, so tag measurements reached the controller 1–3 s late and odometry arrived at 3–8 Hz. After the changes in 14.2, 10 of 10 simulated dockings from random starts ended within 5 mm and 0.1° of the true dock, and two full missions docked within 5 mm.
 
 Fourth pass, 16 November 2026, on the team's Jetson (section 14.4): the image built for the laptop runs there unchanged, `colcon build` takes 1 min 40 s, the tests pass, and after the changes marked "Jetson" in 14.2 a simulated mission completed for all four stations in 89–96 s, each alignment within 10 mm, with no late or rejected tag measurements.
+
+Fifth pass, 16 November 2026, wake word and item recognition (no robot movement):
+
+- **Wake word.** `models/nontok.onnx` now exists. It was trained (`training/wake/`, three steps) on about 5,600 synthetic "Nontok" clips in roughly 900 voices, including Thai and Cantonese system voices, mixed with lab sound recorded on the Jetson, against 370 h of public speech features. On held-out data: 93 % of calls detected in training-style voices, 80 % in an unseen voice engine, 84–98 % in the streaming pipeline when the caller is at least 5 dB louder than the room, and 2–3 false triggers per hour of unseen speech. On the Jetson it runs from an XWF camera's microphone at 40 % of one core, only while listening is enabled, and gave no trigger in a minute of lab sound. **No real person has said the word to it yet.** Try it with `ros2 run nontok_voice listen`; recordings of the team saying it should be added to `data/pos` and the model retrained.
+- **Item recognition.** No dataset exists, so a second classifier was added: `ClipZeroShot` picks the item whose written description (in `items.yaml`) fits the picture best, using the CLIP ViT-B/32 image model (`models/clip_vision.onnx`, 350 MB, not in git; `training/build_item_prompts.py` fetches it and writes `items_clip.npz`). Scores are added up per station and frames vote on the station. On the Jetson it takes 0.8 s per image. On reference photos of the item types every one went to the right station, and views of the room are rejected as "not an item". The tray node was run on the Jetson with a real camera (reference, state at 5 Hz, "unknown" on an empty view). **It has not seen a real item in the real tray.** A trained `items.onnx`, when present, is used instead.
+
+Sixth pass, night of 16–17 November 2026, preparation for the first day on the robot:
+
+- **Tag detection was unaffordable and is now cheap.** Two real detectors (1280x720) used 200 % and 160 % of a core. Causes: every frame was decoded to colour 30 times a second (19 ms each), the loop polled, and the OpenCV detector was in use. Now the camera thread keeps the JPEG and only the frames that are searched are decoded, straight to grey (8 ms); the AprilTag library is used (`dt-apriltags`, which has an arm64 build; `pupil-apriltags` will not build on the Jetson) with one thread and `quad_decimate` 3; rates are 6, 6 and 3 images per second. Measured: 36 % of a core at 6 Hz, 19 % at 3 Hz. No tag has been in front of a camera yet, so range and accuracy at `quad_decimate` 3 are unverified.
+- **Rear and tray cameras take turns.** The tray node sets the rear detector's `paused` parameter, which makes it release its camera, before opening the tray camera, and clears it afterwards. Tested on the Jetson with the two cameras that cannot stream together.
+- **The robot speaks.** `speech_node` plays recorded phrases (`nontok_voice/sounds/`, made by `training/make_speech.py` from `config/phrases.yaml`): it answers the call, asks for the item, says what it is and where it is going, and says when it is back or needs help. With the zero-shot item model the item named can be a look-alike from the same station. No speaker has been connected yet; the node picks the first USB speaker.
+- **First power-on tool.** `ros2 run nontok_base wheel_check` spins the wheels slowly in three patterns with the robot on blocks and checks each encoder's sign and count. Run against the simulated Mega only.
+- **On the Jetson:** `tools/jetson.sh` (build, shell, run, launch, cameras, stop). `docs/tags_160mm.pdf` holds the twelve labelled dock and station tags for printing at 100 % scale.
+- A simulated mission on the Jetson with all of this passed (92 s) but logged one watchdog trip and 43 missed controller cycles, more than the earlier runs; watch the load.
+
+Seventh pass, early 17 November 2026, live dashboard:
+
+- **Dashboard.** `nontok_viz/viz_node` serves one web page on port 8080 of the Jetson: the map with the robot, its trail, the planned path, ultrasonic beams and which tags are in view; mission state, display text, motors, faults, position, speed, localisation, tags per camera, ranges, tray, wake word, computer load, temperature and memory; an event list (state changes, wake word, phrases spoken); warnings from all nodes; and a small picture from each camera. It is part of `nontok.launch.py` (`dashboard:=false` to leave it out). On a laptop: `tools/mac_viz.sh` opens an SSH tunnel and the browser; `tools/mac_viz.sh sim` first starts a simulated mission on the Jetson. Verified from the Mac against the Jetson with a simulated robot. No real camera picture has been through it yet.
+- It costs the Jetson about 7 % of a core while nobody looks and about 40 % while the page is open: the fast topics and the camera pictures are only subscribed to and produced while it is being watched (`viz/watching`).
+- **The Jetson Nano is over its CPU budget.** With the dashboard and speech nodes added, the simulated mission on the Jetson failed in most runs (tag alignment starved: odometry reaching the dock server at 4-10 Hz and up to 2 s old); with both switched off (`dashboard:=false speech:=false`) it passed two of two, with retries. Run-to-run variation is large. Tried and rejected because they made timing worse or no better: Nav2 in one process, a slimmer Nav2 launch, CycloneDDS, the dock server listening only while docking, the global filter at 10 Hz. Kept: dashboard, voice and tray nodes run at low priority (`nice 10`, tag localiser `nice 5`), and the tray node no longer loads the 600 MB vision model in simulation. What has not been tried: stopping the desktop session on the Jetson, and moving the handlers of the fast topics out of Python.
 
 ### 14.2 Changes from sections 1–13
 
@@ -1323,7 +1343,8 @@ Cameras: two "1080P USB Camera" (`2bdf:0289`) and two "XWF 1080P PC Camera" (`1b
 
 - All four USB ports share one USB 2.0 bus and each camera reserves most of it, so the stock driver streams only one camera at a time.
 - A patched `uvcvideo` is installed on the Jetson (source and build in `~/uvc-patched`, stock module saved as `~/uvc-patched/uvcvideo.ko.stock`, option `mjpg_bandwidth=800` in `/etc/modprobe.d/nontok-uvcvideo.conf`). It caps the bandwidth reserved for compressed streams. With it three cameras stream together: 640x480 at 20–28 fps, 1280x720 at 14–19 fps, no bad frames.
-- The two `2bdf` cameras can never stream together on this bus: they offer a single bandwidth setting and two of them exceed the limit. Use the XWF pair as the front cameras, one `2bdf` as the rear camera and the other as the tray camera, and run the tray camera only while the rear one is off (the robot is stationary at the pickup point then). The camera nodes do not do this switching yet.
+- The two `2bdf` cameras can never stream together on this bus: they offer a single bandwidth setting and two of them exceed the limit.
+- **Fitted (2026-11-21): three cameras, no rear.** XWF pair = front (as mounted 23 Nov: `/dev/cam_front_left` port 1-2.1, `/dev/cam_front_right` port 1-2.3, checked by plugging in one at a time; 1-2.4 has a small hub with the USB speaker and the Mega), one `2bdf` = tray (`/dev/cam_tray`, port 1-2.2). All three stream together (MJPEG 640x480: 30 + ~24 + ~19 fps, no "Not enough bandwidth", no OC alarms), so the tray node pauses no detector (`pause_detector: ""`). The rear detector is not launched; back_in stations would need a rear camera again.
 - The cameras of a pair have identical names and serial numbers; address them by USB port (`/dev/v4l/by-path/...usb-0:2.N:1.0-video-index0`) and keep each in its port.
 - A JetPack update that replaces the kernel modules removes the patched driver.
 

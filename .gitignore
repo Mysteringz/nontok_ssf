@@ -11,3 +11,20 @@ training/runs/
 *.pt
 .DS_Store
 .vscode/
+training/clip/
+!ros2_ws/src/nontok_voice/models/nontok.onnx
+.local/
+training/wake/venv/
+training/wake/data/
+training/wake/neg/
+training/wake/ambient/
+training/wake/voices/
+training/wake/*.npy
+!ros2_ws/src/nontok_voice/models/melspectrogram.onnx
+!ros2_ws/src/nontok_voice/models/embedding_model.onnx
+# training/video: recordings, extracted images and runs stay local
+training/video/videos/
+training/video/dataset/
+training/video/dataset_split/
+training/video/runs/
+training/video/*.jpg

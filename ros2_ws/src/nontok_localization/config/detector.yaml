@@ -5,9 +5,14 @@
     height: 720
     fps: 30
     exposure: -1.0        # TODO: fixed short exposure once the cameras are known (v4l2-ctl --list-ctrls)
-    rate_hz: 10.0
-    quad_decimate: 2.0
-    threads: 2
+    # Measured on the Jetson Nano at 1280x720, one thread: an image costs 8 ms to decode and
+    # 80 ms to search at quad_decimate 2, 36 ms at 3, 19 ms at 4. Decimation only shrinks the
+    # image used to find tags (their corners are still refined at full size); at 3 a 160 mm
+    # tag 2.5 m away is still about 19 px wide in the search image. If far tags are missed,
+    # go back to 2 and lower the rates in localization.launch.py.
+    rate_hz: 6.0
+    quad_decimate: 3.0
+    threads: 1
     min_decision_margin: 50.0
     backend: auto
     debug: false

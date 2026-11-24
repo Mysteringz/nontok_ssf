@@ -164,7 +164,7 @@ def nav_targets(robot):
 
 
 @pytest.mark.parametrize('item,station', [
-    ('resistor', 'electrical'), ('bolt', 'mechanical'), ('wire_offcut', 'scraps'), ('pliers', 'tools')])
+    ('led', 'electrical'), ('resistor', 'electrical'), ('bolt', 'mechanical'), ('multimeter', 'tools')])
 def test_full_mission_for_each_station(item, station):
     r = Runner()
     r.robot.classify_script = [(True, item, station, 0.95)]
@@ -233,6 +233,18 @@ def test_unknown_item_is_retried_then_carried_home():
     assert 'REPOSITION ITEM' in r.robot.shown
     assert sm.S7_DUMP not in r.states and r.robot.item_on_tray             # never dumped a guess
     assert [e for e in r.events if e['event'] == 'mission_end'][0]['result'] == 'UNKNOWN_ITEM'
+
+
+def test_unknown_item_goes_to_the_manual_sorting_station_when_set():
+    r = Runner(MissionConfig(classify_retry_wait_s=1.0, unknown_station='unknown'))
+    r.robot.classify_script = [(False, 'bolt', '', 0.4)]
+    r.to_item_wait()
+    r.robot.item_on_tray = True
+    r.until(sm.S0_DOCKED)
+    assert len([c for c in r.robot.calls if c[0] == 'classify']) == 3      # first try + 2 retries
+    assert nav_targets(r.robot) == ['pickup', 'unknown', 'dock']
+    assert sm.S7_DUMP in r.states and not r.robot.item_on_tray             # left there for a person
+    assert [e for e in r.events if e['event'] == 'dumped'][0]['item'] == 'unknown'
 
 
 def test_second_classification_succeeds_after_repositioning():

@@ -1,0 +1,20 @@
+# What the robot says. After editing run training/make_speech.py on a PC: it writes one WAV
+# file per phrase into nontok_voice/sounds/ (the robot only plays files). When each phrase is
+# said is decided in nontok_voice/speech_logic.py.
+phrases:
+  answer: "Yes? I'm on my way."                       # the call was heard, leaving the dock
+  place_item: "Please put the item in my tray."
+  reposition: "I can't tell what that is. Please move it a little, or try something else."
+  item: "That's {item}. I'll take it to the {station} station."   # one file per item in items.yaml
+  item_UNKNOWN_ITEM: "I don't know what this is. I'll take it to be sorted by hand."
+  no_item: "Nothing to carry. I'm going back."
+  delivered: "Here it goes."
+  going_home: "All done. Heading back to my dock."
+  docked: "I'm back. Call me when you need me."
+  fault: "Something went wrong. I need a hand, please."
+  fault_LOCALISATION_LOST: "I'm lost. I need a hand, please."
+  fault_STOPPED: "Stopped."
+
+# How an item is said. Items not listed are read from their name with "a" in front.
+spoken_items:
+  led: an LED

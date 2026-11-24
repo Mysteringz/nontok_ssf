@@ -14,7 +14,7 @@ tags:
   11: {x: -0.85, y: 3.00, z: 0.20, yaw_deg: -90.0}   # electrical, right
   12: {x: -2.15, y: 3.00, z: 0.20, yaw_deg: -90.0}   # mechanical
   13: {x: -1.85, y: 3.00, z: 0.20, yaw_deg: -90.0}
-  14: {x: -0.85, y: -1.00, z: 0.20, yaw_deg: 90.0}   # scraps
+  14: {x: -0.85, y: -1.00, z: 0.20, yaw_deg: 90.0}   # unknown (manual sorting)
   15: {x: -1.15, y: -1.00, z: 0.20, yaw_deg: 90.0}
   16: {x: -1.85, y: -1.00, z: 0.20, yaw_deg: 90.0}   # tools
   17: {x: -2.15, y: -1.00, z: 0.20, yaw_deg: 90.0}

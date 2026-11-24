@@ -12,7 +12,7 @@ from typing import Sequence, Tuple
 class MecanumParams:
     wheel_diameter_m: float = 0.080
     counts_per_rev: float = 660.0
-    rotation_arm_m: float = 0.160   # half wheelbase + half track
+    rotation_arm_m: float = 0.1925  # half wheelbase + half track (165/2 + 220/2 mm, 23 Nov)
     scale_x: float = 1.0            # true distance / encoder distance, forward
     scale_y: float = 1.0            # same, sideways (rollers slip more)
 

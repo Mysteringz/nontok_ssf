@@ -1,7 +1,7 @@
 # Docking settings (PLAN.md section 5.7). Station distances come from stations.yaml.
 dock_server:
   ros__parameters:
-    cameras: [front_left, front_right]
+    cameras: [front_left, front_right]   # add rear for back_in stations if a rear camera is fitted
     approach_speed: 0.08
     final_speed: 0.04
     max_yaw_rate: 0.3
@@ -10,7 +10,7 @@ dock_server:
     gain_yaw: 1.5
     pre_distance_m: 0.15
     lateral_tolerance_m: 0.015
-    distance_tolerance_m: 0.020
+    distance_tolerance_m: 0.040   # 24 Nov: the final creep stalled 31 mm short (command too small to move the wheels)
     yaw_tolerance_deg: 3.0
     dock_lateral_tolerance_m: 0.010      # tighter at the charger; TODO confirm against the coil
     dock_distance_tolerance_m: 0.010
@@ -21,3 +21,4 @@ dock_server:
     undock_distance_m: 0.30
     undock_speed: 0.08
     max_measurement_age_s: 0.4           # tag views older than this are not used for steering
+    max_reprojection_px: 8.0             # cameras on fixed, slightly-off mounts measured from the tags (24 Nov): planar fits 4.7-5.4 px

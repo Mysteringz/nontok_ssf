@@ -25,7 +25,7 @@ def build_urdf(config: dict) -> str:
     parts = ['<?xml version="1.0"?>\n<robot name="nontok">\n  <link name="base_link"/>\n']
     parts.append(_joint('base_link', 'imu_link', config.get('imu', {}).get('xyz', [0, 0, 0]), (0, 0, 0)))
     for name, cam in config.get('cameras', {}).items():
-        rpy = (0.0, math.radians(cam.get('pitch_deg', 0.0)), math.radians(cam.get('yaw_deg', 0.0)))
+        rpy = (math.radians(cam.get('roll_deg', 0.0)), math.radians(cam.get('pitch_deg', 0.0)), math.radians(cam.get('yaw_deg', 0.0)))
         parts.append(_joint('base_link', 'cam_' + name, cam['xyz'], rpy))
         parts.append(_joint('cam_' + name, 'cam_%s_optical' % name, (0, 0, 0), OPTICAL_RPY))
     for name, sensor in config.get('ranges', {}).items():
