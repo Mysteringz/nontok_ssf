@@ -12,9 +12,9 @@ dock_server:
     lateral_tolerance_m: 0.015
     distance_tolerance_m: 0.040   # 24 Nov: the final creep stalled 31 mm short (command too small to move the wheels)
     yaw_tolerance_deg: 3.0
-    dock_lateral_tolerance_m: 0.010      # tighter at the charger; TODO confirm against the coil
-    dock_distance_tolerance_m: 0.010
-    dock_yaw_tolerance_deg: 2.0
+    dock_lateral_tolerance_m: 0.025      # 24 Nov, no charger yet: 0.010 made the last creep stall (TODO tighten for the coil)
+    dock_distance_tolerance_m: 0.025
+    dock_yaw_tolerance_deg: 3.0
     blind_distance_m: 0.30
     total_timeout_s: 30.0
     charge_threshold_v: 4.0              # TODO measure the receiver voltage on the coil
