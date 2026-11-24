@@ -70,9 +70,15 @@ def tilt_of(t: np.ndarray) -> float:
 BODY_TO_OPTICAL = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
 
 
-def camera_mount(x: float, y: float, z: float, yaw: float, pitch: float = 0.0) -> np.ndarray:
+def rot_x(angle: float) -> np.ndarray:
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+
+def camera_mount(x: float, y: float, z: float, yaw: float, pitch: float = 0.0, roll: float = 0.0) -> np.ndarray:
     """base_link -> camera optical frame, for a camera at (x, y, z) looking along `yaw`.
 
-    pitch > 0 tilts the camera downwards.
+    pitch > 0 tilts the camera downwards; roll turns it about its forward axis (URDF rpy order:
+    yaw, then pitch, then roll, as in nontok_description's robot.yaml).
     """
-    return transform(rot_z(yaw) @ rot_y(pitch) @ BODY_TO_OPTICAL, (x, y, z))
+    return transform(rot_z(yaw) @ rot_y(pitch) @ rot_x(roll) @ BODY_TO_OPTICAL, (x, y, z))

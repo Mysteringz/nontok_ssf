@@ -1,16 +1,19 @@
-# The lab as rectangles, in metres, in the map frame (origin = docked robot, x = the way it
-# faces, y = its left). PLACEHOLDER ROOM matching the placeholder tags.yaml: measure the lab.
-# Each rectangle is [x1, y1, x2, y2] (two opposite corners). After editing, regenerate:
+# The lab as rectangles, in metres, in the map frame (origin = docked robot centre, x = the way it
+# faces, y = its left). APPROXIMATE, from the 24 Nov 2026 room sketch: room 2.50 m wide (left wall
+# to right wall); depth NOT measured, far wall assumed 3.00 m from the front wall.
+# Room frame (cm) -> map: x = (35 - along) / 100, y = (out - 120) / 100. Walls drawn 0.10 m thick.
+# After editing, regenerate:
 #   python3 -m nontok_navigation.draw_map --layout config/lab_layout.yaml --out config/map
 resolution: 0.05
-bounds: [-3.50, -1.50, 1.10, 3.50]        # area covered by the map: [x_min, y_min, x_max, y_max]
+bounds: [-2.40, -1.45, 0.60, 2.05]        # area covered by the map: [x_min, y_min, x_max, y_max]
 
 walls:
-  - {name: dock wall,    rect: [0.62, -1.10, 0.72, 3.10]}
-  - {name: pickup wall,  rect: [-3.12, -1.10, -3.02, 3.10]}
-  - {name: station wall north, rect: [-3.12, 3.02, 0.72, 3.12]}
-  - {name: station wall south, rect: [-3.12, -1.12, 0.72, -1.02]}
+  - {name: left wall (dock),                 rect: [0.35, -1.30, 0.45, 1.90]}
+  - {name: right wall (pickup, mechanical),  rect: [-2.25, -1.30, -2.15, 1.90]}
+  - {name: front wall (electrical),          rect: [-2.25, -1.30, 0.45, -1.20]}
+  - {name: far wall (ASSUMED, not measured), rect: [-2.25, 1.80, 0.45, 1.90]}
 
-furniture: []      # benches, cabinets, fixed equipment
+furniture: []      # benches, cabinets, fixed equipment: none reported yet
 
-keep_out: []       # places the robot must not enter even though they look free (chair zones)
+keep_out:          # places the robot must not enter even though they look free
+  - {name: unmeasured far end (out 270-300 cm), rect: [-2.15, 1.50, 0.35, 1.80]}

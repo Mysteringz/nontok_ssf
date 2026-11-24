@@ -47,18 +47,20 @@ def test_urdf_has_all_frames():
 def test_camera_frames_match_localisation_maths():
     root = ET.fromstring(build_urdf(CONFIG))
     for name, cam in CONFIG['cameras'].items():
-        expected = camera_mount(*cam['xyz'], math.radians(cam['yaw_deg']), math.radians(cam['pitch_deg']))
+        expected = camera_mount(*cam['xyz'], math.radians(cam['yaw_deg']), math.radians(cam['pitch_deg']),
+                                math.radians(cam.get('roll_deg', 0.0)))
         assert np.allclose(chain(root, 'cam_%s_optical' % name), expected, atol=1e-5), name
 
 
 def test_camera_directions():
     root = ET.fromstring(build_urdf(CONFIG))
-    forward = chain(root, 'cam_front_left_optical')[:3, 2]     # optical z = viewing direction
-    assert np.allclose(forward, [1, 0, 0], atol=1e-5)
+    for name in ('front_left', 'front_right'):   # measured mounts (24 Nov): a few degrees off straight ahead
+        forward = chain(root, 'cam_%s_optical' % name)[:3, 2]   # optical z = viewing direction
+        assert forward[0] > math.cos(math.radians(10)), name
     assert np.allclose(chain(root, 'cam_rear_optical')[:3, 2], [-1, 0, 0], atol=1e-5)
     assert np.allclose(chain(root, 'cam_tray_optical')[:3, 2], [0, 0, -1], atol=1e-5)   # looks down
     assert np.allclose(chain(root, 'range_left45')[:3, 0], [math.sqrt(0.5), math.sqrt(0.5), 0], atol=1e-5)
 
 
 def test_footprint_string():
-    assert footprint_string(CONFIG).startswith('[[0.170, 0.140], ')
+    assert footprint_string(CONFIG).startswith('[[0.172, 0.123], ')   # measured 345 x 247 mm (24 Nov)

@@ -1,7 +1,9 @@
 # Robot geometry. PLACEHOLDERS: measure everything on the real robot (PLAN.md section 12).
 # Positions are in metres relative to base_link: the centre of the four wheels, on the floor,
 # x forward (toward the ultrasonic end), y left, z up. Angles in degrees.
-footprint: [[0.17, 0.14], [0.17, -0.14], [-0.17, -0.14], [-0.17, 0.14]]   # corners, clockwise from front-left
+# Footprint measured 24 Nov 2026 (map package): length 345 mm incl. the tray (sticks out ~20 mm at the
+# front), width 247 mm. ASSUMED centred on the wheel centre.
+footprint: [[0.1725, 0.1235], [0.1725, -0.1235], [-0.1725, -0.1235], [-0.1725, 0.1235]]   # corners, clockwise from front-left
 
 imu: {xyz: [0.0, 0.0, 0.08]}
 

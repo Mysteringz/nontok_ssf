@@ -59,21 +59,21 @@ def test_shipped_map_is_up_to_date():
 def test_station_frames_and_poses():
     dock = STATIONS['dock']
     frame = station_frame(dock, TAGS)
-    assert frame[:2] == pytest.approx((0.60, 0.0))
+    assert frame[:2] == pytest.approx((0.35, 0.0))   # real room, map package 24 Nov
     assert abs(math.cos(frame[2]) + 1.0) < 1e-9                 # faces -x, back toward the robot
     assert aligned_pose(dock, TAGS) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9)   # docked = map origin
-    assert approach_pose(dock, TAGS) == pytest.approx((-0.5, 0.0, 0.0), abs=1e-9)
+    assert approach_pose(dock, TAGS) == pytest.approx((-0.75, 0.0, 0.0), abs=1e-9)
     electrical = approach_pose(STATIONS['electrical'], TAGS)
-    assert electrical == pytest.approx((-1.0, 2.1, math.pi / 2), abs=1e-9)        # below the wall, facing +y
+    assert electrical == pytest.approx((-1.7, -0.3, -math.pi / 2), abs=1e-9)   # out from the front wall, facing it
     assert not any(station.back_in for station in STATIONS.values())
     backed = approach_pose(dataclasses.replace(STATIONS['electrical'], back_in=True), TAGS)
-    assert backed == pytest.approx((-1.0, 2.1, -math.pi / 2), abs=1e-9)           # same spot, back to the wall
+    assert backed == pytest.approx((-1.7, -0.3, math.pi / 2), abs=1e-9)   # same spot, back to the wall
 
 
 def test_every_station_is_consistent_with_tags_and_map():
     bounds, rectangles, resolution = draw_map.load_layout(str(NAV_CONFIG / 'lab_layout.yaml'))
     image = rasterise(bounds, rectangles, resolution)
-    assert set(STATIONS) == {'dock', 'pickup', 'electrical', 'mechanical', 'unknown'}
+    assert set(STATIONS) == {'dock', 'pickup', 'electrical', 'mechanical'}   # no unknown / tools (24 Nov)
     for station in STATIONS.values():
         assert tag_spacing(station, TAGS) == pytest.approx(0.30, abs=0.01)
         frame = station_frame(station, TAGS)
