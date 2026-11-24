@@ -5,7 +5,7 @@ items:
   led: electrical
   resistor: electrical
   bolt: mechanical
-  multimeter: tools
+  multimeter: electrical   # 24 Nov: the electrical depot takes multimeters back
 # Anything else (or a low-confidence answer) is "unknown": the mission takes it to the
 # "unknown" station (mission.yaml unknown_station) for a person to sort by hand.
 

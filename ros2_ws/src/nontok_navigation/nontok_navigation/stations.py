@@ -26,6 +26,7 @@ class Station:
     lateral_offset_m: float = 0.0   # + = stop to the right of centre, as seen facing the tags
     is_dock: bool = False
     back_in: bool = False      # the robot reverses up to the tags (rear camera) instead of facing them
+    contact_range_m: float = -1.0   # front ultrasonic reading that counts as arrived (-1: docking.yaml's)
 
 
 def load_stations(path: str) -> Dict[str, Station]:
@@ -37,7 +38,7 @@ def load_stations(path: str) -> Dict[str, Station]:
             name, int(entry['tag_ids'][0]), int(entry['tag_ids'][1]),
             float(entry['standoff_m']), float(entry['approach_m']),
             float(entry.get('lateral_offset_m', 0.0)), bool(entry.get('is_dock', False)),
-            bool(entry.get('back_in', False)))
+            bool(entry.get('back_in', False)), float(entry.get('contact_range_m', -1.0)))
     return stations
 
 

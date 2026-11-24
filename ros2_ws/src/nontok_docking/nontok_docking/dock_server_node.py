@@ -150,7 +150,8 @@ class DockServer(Node):
             yaw_tolerance_rad=math.radians(self.value(prefix + 'yaw_tolerance_deg')),
             blind_distance_m=self.value('blind_distance_m'), total_timeout_s=self.value('total_timeout_s'),
             charge_threshold_v=self.value('charge_threshold_v'),
-            contact_range_m=0.0 if station.is_dock else self.value('contact_range_m'))
+            contact_range_m=0.0 if station.is_dock else (
+                station.contact_range_m if station.contact_range_m >= 0 else self.value('contact_range_m')))
 
     # ---- action ----
     def on_goal(self, goal):

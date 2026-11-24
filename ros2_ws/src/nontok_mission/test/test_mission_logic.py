@@ -164,7 +164,7 @@ def nav_targets(robot):
 
 
 @pytest.mark.parametrize('item,station', [
-    ('led', 'electrical'), ('resistor', 'electrical'), ('bolt', 'mechanical'), ('multimeter', 'tools')])
+    ('led', 'electrical'), ('resistor', 'electrical'), ('bolt', 'mechanical'), ('multimeter', 'electrical')])
 def test_full_mission_for_each_station(item, station):
     r = Runner()
     r.robot.classify_script = [(True, item, station, 0.95)]
@@ -182,7 +182,7 @@ def test_full_mission_for_each_station(item, station):
     assert r.states == FULL_PATH
     assert nav_targets(r.robot) == ['pickup', station, 'dock']
     assert [c[1] for c in r.robot.calls if c[0] == 'dock'] == ['pickup', station, 'dock']
-    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [50.0, 0.0]
+    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [120.0, 0.0]
     assert len([c for c in r.robot.calls if c[0] == 'retreat']) == 3     # dock, pickup, station
     end = [e for e in r.events if e['event'] == 'mission_end'][0]
     assert end['result'] == 'OK' and end['station'] == station and end['item'] == item
@@ -328,7 +328,7 @@ def test_item_stuck_is_dumped_twice_then_reported():
     r.to_item_wait()
     r.robot.item_on_tray = True
     r.until(sm.S0_DOCKED)
-    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [50.0, 0.0, 50.0, 0.0]
+    assert [c[1] for c in r.robot.calls if c[0] == 'tray'] == [120.0, 0.0, 120.0, 0.0]
     assert [e for e in r.events if e['event'] == 'mission_end'][0]['result'] == 'ITEM_STUCK'
 
 
