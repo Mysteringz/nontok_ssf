@@ -249,11 +249,11 @@ def test_unknown_item_goes_to_the_manual_sorting_station_when_set():
 
 def test_second_classification_succeeds_after_repositioning():
     r = Runner(MissionConfig(classify_retry_wait_s=1.0))
-    r.robot.classify_script = [(False, '', '', 0.3), (True, 'pliers', 'tools', 0.9)]
+    r.robot.classify_script = [(False, '', '', 0.3), (True, 'pliers', 'mechanical', 0.9)]
     r.to_item_wait()
     r.robot.item_on_tray = True
     r.until(sm.S0_DOCKED)
-    assert nav_targets(r.robot) == ['pickup', 'tools', 'dock']
+    assert nav_targets(r.robot) == ['pickup', 'mechanical', 'dock']
 
 
 def test_item_taken_back_during_retry_returns_to_waiting():
