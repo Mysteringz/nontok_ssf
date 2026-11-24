@@ -6,6 +6,7 @@
   python3 wheel_bench.py ff      # FFTEST: open-loop PWM 30/40/50/60/90/120 both ways (--levels), fits FF
   python3 wheel_bench.py hold    # speed hold 100/200/300 mm/s both ways, then strafe and turn
   python3 wheel_bench.py drive   # ON THE FLOOR: straight --distance mm (default 1000) at --speed 150
+  python3 wheel_bench.py route --route "F1500 R90 U200 D"   # ON THE FLOOR: legs, approach, dump
 
 ff and hold drive the motors: wheels raised, 12 V on, a hand on the cut-off switch. They ask you
 to type LIFTED first. Every exit (end, Ctrl-C, error, lost SSH) sends '!' to stop and disarm.
@@ -460,13 +461,151 @@ def run_drive(bench, args):
             last_counts = counts
 
 
+# ---------------- route (on the floor): measured legs, approach, dump ----------------
+ROUTE_HELP = """Route steps, separated by spaces:
+  F<mm> / B<mm>  straight forward / back by encoder distance   (F1500)
+  S<mm>          strafe, + = left, - = right                   (S-300)
+  L<deg> / R<deg> turn left (CCW) / right (CW) by gyro          (R90)
+  U<mm>          creep forward until the FRONT ultrasonic reads <mm> (U200), at most 1.5 m
+  D              dump: tray to 130 deg, hold 1.5 s, back to 0 (robot stopped and disarmed)
+  W<s>           wait"""
+
+
+class Mover:
+    """Streams VEL at 10 Hz and tracks encoder distance, gyro heading and ranges."""
+
+    def __init__(self, bench):
+        self.b = bench
+        self.counts = None
+        self.heading = 0.0  # rad, CCW +
+        self.t_ms = None
+        self.rng = None
+        self.near_before = [False, False, False]
+
+    def poll(self, check_front=True):
+        for text in self.b.lines():
+            if text.startswith('ERR') or text.startswith('READY'):
+                raise RuntimeError('Mega: ' + text)
+            if text.startswith('RNG'):
+                r = text.split()
+                if len(r) == 7:
+                    self.rng = [int(x) for x in r[2:7]]
+                    front = self.rng[:3]  # FL45, FR45, front
+                    near = [0 <= front[0] < 150, 0 <= front[1] < 150, 0 <= front[2] < 250]
+                    if check_front and any(a and b for a, b in zip(near, self.near_before)):
+                        raise RuntimeError('obstacle ahead (FL45/FR45/front %s mm, twice): stopped' % front)
+                    self.near_before = near
+            odo = parse_odo(text)
+            if odo:
+                t_ms, counts, gz = odo
+                if self.t_ms is not None:
+                    self.heading += gz * 0.001 * (t_ms - self.t_ms) * 0.001
+                self.t_ms, self.counts = t_ms, counts
+
+    def wait_counts(self):
+        end = time.time() + 2
+        while self.counts is None:
+            self.poll(False)
+            if time.time() > end:
+                raise RuntimeError('no ODO lines')
+
+    def leg(self, name, vel, done, check_front, timeout):
+        """Drive VEL vel until done(dx, dy, dyaw) says brake; then ramp to 0 and wait until still."""
+        self.wait_counts()
+        c0, h0 = list(self.counts), self.heading
+        t0, last = time.time(), 0.0
+        braking, still_since, prev = False, None, None
+        while True:
+            now = time.time()
+            if now - t0 > timeout:
+                raise RuntimeError('%s: timeout after %.0f s: stopped' % (name, timeout))
+            if now - last >= 0.1:
+                self.b.send('VEL %d %d %d' % ((0, 0, 0) if braking else vel))
+                last = now
+            self.poll(check_front and not braking)
+            d = [(c - s) * self.b.mm_per_count for c, s in zip(self.counts, c0)]
+            dx = sum(d) / 4.0
+            dy = (-d[0] + d[1] + d[2] - d[3]) / 4.0
+            dyaw = self.heading - h0
+            if not braking and done(dx, dy, dyaw):
+                braking = True
+            if not braking and now - t0 > 2.5 and max(abs(dx), abs(dy)) < 30 and abs(dyaw) < 0.05:
+                raise RuntimeError('%s: hardly moving after 2.5 s: wheels slip or stall; stopped' % name)
+            if braking:
+                still_since = (still_since or now) if self.counts == prev else None
+                if still_since and now - still_since > 0.4:
+                    print('  %-7s done: forward %+5.0f mm, left %+5.0f mm, turned %+5.1f deg'
+                          % (name, dx, dy, math.degrees(dyaw)))
+                    return
+            prev = list(self.counts)
+
+
+def run_route(bench, args):
+    steps = args.route.split()
+    for s in steps:
+        if not (s == 'D' or (len(s) > 1 and s[0] in 'FBSLRUW' and s[1:].lstrip('-').replace('.', '', 1).isdigit())):
+            raise RuntimeError('bad route step %r\n%s' % (s, ROUTE_HELP))
+    print('ON THE FLOOR. Route: %s' % ' '.join(steps))
+    print('Clear path, someone ready to grab it or cut 12 V. Type FLOOR to go on:', end=' ', flush=True)
+    if sys.stdin.readline().strip() != 'FLOOR':
+        print('Not confirmed; nothing was sent.')
+        sys.exit(1)
+    m = Mover(bench)
+    v, wz = args.speed, 500  # mm/s, mrad/s (about 29 deg/s)
+    brake_mm = v ** 2 / (2 * ACCEL_MM_S2)
+    brake_rad = (wz * 0.001) ** 2 / (2 * ACCEL_RAD_S2)
+    for s in steps:
+        kind, val = s[0], float(s[1:]) if len(s) > 1 else 0.0
+        if kind in 'FBSLRU':
+            bench.send('ARM')
+            bench.wait_for('OK ARM', 2.0)
+        if kind in 'FB':
+            sign = 1 if kind == 'F' else -1
+            m.leg(s, (sign * v, 0, 0), lambda dx, dy, a: abs(dx) >= val - brake_mm,
+                  sign > 0, val / v + 6)
+        elif kind == 'S':
+            sign = 1 if val > 0 else -1
+            m.leg(s, (0, sign * v, 0), lambda dx, dy, a: abs(dy) >= abs(val) - brake_mm,
+                  False, abs(val) / v + 6)
+        elif kind in 'LR':
+            sign = 1 if kind == 'L' else -1
+            target = math.radians(val)
+            m.leg(s, (0, 0, sign * wz), lambda dx, dy, a: abs(a) >= target - brake_rad,
+                  False, target / (wz * 0.001) + 6)
+        elif kind == 'U':
+            slow = 100
+            def close(dx, dy, a):
+                f = m.rng[2] if m.rng else -1
+                return (0 <= f <= val + slow ** 2 / (2 * ACCEL_MM_S2)) or dx >= 1500
+            m.rng = None
+            m.leg(s, (slow, 0, 0), close, False, 1500 / slow + 6)
+            print('  front ultrasonic now %s mm' % (m.rng[2] if m.rng else '?'))
+        elif kind == 'W':
+            end = time.time() + val
+            while time.time() < end:
+                m.poll(False)
+        elif kind == 'D':
+            bench.send('DISARM')
+            for target in (130, 0):
+                bench.send('TRAY %d' % target)
+                bench.wait_for('OK TRAY', 2.0)
+                bench.wait_for('DONE TRAY', 8.0)
+                print('  tray at %d deg' % target)
+                if target:
+                    end = time.time() + 1.5
+                    while time.time() < end:
+                        m.poll(False)
+        bench.send('DISARM')
+    print('Route done. Heading change %+.1f deg (gyro).' % math.degrees(m.heading))
+
+
 def _interrupt(signum, frame):
     raise KeyboardInterrupt  # lost SSH (SIGHUP) or kill: leave through the stop in finally
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('mode', choices=('watch', 'ff', 'hold', 'drive'))
+    p.add_argument('mode', choices=('watch', 'ff', 'hold', 'drive', 'route'))
     p.add_argument('--port', default='/dev/nontok_mega')
     p.add_argument('--log-dir', default=os.path.expanduser('~/Documents/David/wheel_bench'))
     p.add_argument('--wheel-mm', type=float, default=WHEEL_DIAMETER_MM,
@@ -475,7 +614,8 @@ def main():
                    help='ff: open-loop PWM levels, 1..%d, at most 6' % MAX_PWM)
     p.add_argument('--speeds', type=int, nargs='+', default=[100, 200, 300], help='hold: mm/s')
     p.add_argument('--distance', type=int, default=1000, help='drive: mm, negative = backward')
-    p.add_argument('--speed', type=int, default=150, help='drive: mm/s')
+    p.add_argument('--speed', type=int, default=150, help='drive / route: mm/s')
+    p.add_argument('--route', default='', help='route: steps such as "F1500 R90 U200 D" (see route help)')
     p.add_argument('--seconds', type=float, default=3.0, help='hold: time per step')
     p.add_argument('--measure', type=float, default=1.5, help='hold: judged over the last N s')
     p.add_argument('--no-patterns', action='store_true', help='hold: skip strafe and turn')
@@ -495,7 +635,7 @@ def main():
     code = 0
     try:
         bench.wait_ready()
-        {'watch': run_watch, 'ff': run_ff, 'hold': run_hold, 'drive': run_drive}[args.mode](bench, args)
+        {'watch': run_watch, 'ff': run_ff, 'hold': run_hold, 'drive': run_drive, 'route': run_route}[args.mode](bench, args)
     except KeyboardInterrupt:
         print('\nStopped.')
     except RuntimeError as e:
