@@ -631,8 +631,8 @@ Cut in this order, keeping a complete demo at each step:
 
 | Value | Used in | Measured |
 |---|---|---|
-| Wheel diameter (mm) | Odometry | 80 (calipers, 23 Nov; refine at CP2) |
-| Encoder counts per wheel revolution | Odometry | |
+| Wheel diameter (mm) | Odometry | 80 (calipers, 23 Nov); 1 m floor run read 1010 mm on the encoders, tape 1 m (24 Nov) |
+| Encoder counts per wheel revolution | Odometry | 660 (hand test, all four wheels, 23 Nov) |
 | Rotation arm L (mm) | Kinematics | 192.5 (wheelbase 165, track 220, 23 Nov) |
 | Robot footprint, length × width (mm) | Nav2 | |
 | Strafe scale factor | Odometry | |
@@ -645,8 +645,8 @@ Cut in this order, keeping a complete demo at each step:
 | Station approach poses and stand-off distances | `stations.yaml` | |
 | Charging coil alignment tolerance (mm) | Docking | |
 | Charge-sense voltage threshold (mV) | Docking | |
-| Tray tipped angle (°) | Dump | |
-| Feed-forward constants per wheel | Wheel PID | |
+| Tray tipped angle (°) | Dump | 130 stepper limit; 120° up and back tested 24 Nov |
+| Feed-forward constants per wheel | Wheel PID | Raised wheels, 24 Nov: FF_A {2.8, 3.9, 5.4, 5.3}, FF_B {0.148, 0.150, 0.146, 0.143}; refit on the floor at CP2 |
 
 ---
 

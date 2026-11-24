@@ -92,6 +92,35 @@ The robot's Mega holds one program at a time: this repo's firmware (`nontok_ssf`
 The probe dashboard runs on the Mac (Python 3.7 or newer), so with the Mega's USB on the Jetson it
 connects over Bluetooth (HC-06), or move the USB cable to the Mac.
 
+## Bench and floor tests (`tools/wheel_bench.py`, on the Jetson)
+
+Talks to our firmware on `/dev/nontok_mega` (Python 3.6 is enough). Every mode that drives asks for
+a typed confirmation first, and every exit (end, Ctrl-C, error, lost SSH) sends `!` and DISARM.
+Raw logs go to `~/Documents/David/wheel_bench/`. Results so far: [docs/cp1_results.md](docs/cp1_results.md).
+
+```
+cd ~/nontok/tools
+python3 wheel_bench.py watch                      # never arms: live encoder counts for the hand test
+python3 wheel_bench.py ff                         # wheels RAISED: PWM 30-120 both ways, fits FF_A/FF_B
+python3 wheel_bench.py hold                       # wheels RAISED: speed hold 100/200/300, strafe, turn
+python3 wheel_bench.py drive --distance 1000      # FLOOR: straight run by encoder distance, then stop
+python3 wheel_bench.py route --route "F1500 R90 U200 D"   # FLOOR: legs, ultrasonic approach, tray dump
+```
+
+Route steps: `F`/`B` mm straight, `S` mm strafe (+ left), `L`/`R` degrees turn (gyro), `U` mm creep
+until the front ultrasonic reads that distance, `D` dump (130°, hold 1.5 s, back), `W` seconds wait.
+Floor modes stop for an obstacle seen twice in a row (front < 250 mm, a 45° sensor < 150 mm), a
+stall, or a timeout.
+
+Wiring of every device on the shield: [docs/wiring.md](docs/wiring.md).
+
+To use the teammate's probe dashboard on the Mac while the Mega is plugged into the Jetson, flash
+their firmware (`mega_firmware.sh probe`), then on the Mac run `python3 tools/serial_bridge.py` and
+start their dashboard on the port it prints (details in the script).
+
+Printing for camera calibration and tags: `docs/checkerboard_9x6_25mm_A4.pdf`
+(`tools/make_checkerboard.py`) and `docs/tags_160mm_labelled.pdf`, at 100 % scale.
+
 ## Layout
 
 ```text
