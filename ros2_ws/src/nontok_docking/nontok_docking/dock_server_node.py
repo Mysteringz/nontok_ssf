@@ -46,7 +46,7 @@ class DockServer(Node):
                 ('gain_forward', 0.8), ('gain_sideways', 1.0), ('gain_yaw', 1.5), ('pre_distance_m', 0.15),
                 ('lateral_tolerance_m', 0.015), ('distance_tolerance_m', 0.020), ('yaw_tolerance_deg', 3.0),
                 ('dock_lateral_tolerance_m', 0.010), ('dock_distance_tolerance_m', 0.010),
-                ('dock_yaw_tolerance_deg', 2.0), ('blind_distance_m', 0.30), ('total_timeout_s', 30.0),
+                ('dock_yaw_tolerance_deg', 2.0), ('blind_distance_m', 0.30), ('contact_range_m', 0.0), ('total_timeout_s', 30.0),
                 ('charge_threshold_v', 4.0), ('undock_distance_m', 0.30), ('undock_speed', 0.08),
                 ('max_measurement_age_s', 0.4)]:
             p(name, default)
@@ -149,7 +149,8 @@ class DockServer(Node):
             distance_tolerance_m=self.value(prefix + 'distance_tolerance_m'),
             yaw_tolerance_rad=math.radians(self.value(prefix + 'yaw_tolerance_deg')),
             blind_distance_m=self.value('blind_distance_m'), total_timeout_s=self.value('total_timeout_s'),
-            charge_threshold_v=self.value('charge_threshold_v'))
+            charge_threshold_v=self.value('charge_threshold_v'),
+            contact_range_m=0.0 if station.is_dock else self.value('contact_range_m'))
 
     # ---- action ----
     def on_goal(self, goal):

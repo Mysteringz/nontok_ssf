@@ -53,6 +53,10 @@ class DockConfig:
     blind_distance_m: float = 0.30        # this close to the target the tags may leave the image
     # safety
     min_front_range_m: float = 0.05
+    # Station pressed against (24 Nov, a box in front of the tags): a front reading this short or shorter in
+    # FINAL, with sideways and yaw inside tolerance, is arrival. Close in the robot drives blind and its
+    # distance estimate was 3-4 cm short while already against the box; it then stalled. 0 = off.
+    contact_range_m: float = 0.0
     total_timeout_s: float = 30.0
     # charger (dock only)
     charge_threshold_v: float = 4.0
@@ -218,6 +222,11 @@ class DockController:
             return self._command(error, cfg.approach_speed)
 
         if self.phase == FINAL:
+            if (cfg.contact_range_m > 0 and front_range is not None and front_range <= cfg.contact_range_m
+                    and abs(self.errors[1]) <= cfg.lateral_tolerance_m
+                    and abs(self.errors[2]) <= cfg.yaw_tolerance_rad):
+                self._enter(DONE, now, 'aligned (front contact %.0f mm)' % (front_range * 1000))
+                return (0.0, 0.0, 0.0)
             # Drive on to well inside the tolerance; stopping at its edge leaves no margin
             # for the roll-out, and the result is then checked against the full tolerance.
             if self._within_final_tolerance(cfg.stop_fraction):

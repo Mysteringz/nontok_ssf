@@ -21,4 +21,5 @@ dock_server:
     undock_distance_m: 0.30
     undock_speed: 0.08
     max_measurement_age_s: 0.4           # tag views older than this are not used for steering
+    contact_range_m: 0.225               # front reading against the electrical box (0.205-0.217 m, 24 Nov); 0 = off
     max_reprojection_px: 8.0             # cameras on fixed, slightly-off mounts measured from the tags (24 Nov): planar fits 4.7-5.4 px
