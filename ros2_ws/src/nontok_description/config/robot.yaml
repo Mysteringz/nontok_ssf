@@ -11,8 +11,8 @@ cameras:          # xyz = lens position; yaw = viewing direction; pitch > 0 look
   # front_left / front_right measured 24 Nov from the station tags: side offset and yaw from solvePnP over a 20 cm
   # straight drive (ultrasonic for the scale); height, pitch, roll fitted to the docking solver over 0.43-0.65 m
   # (5.3 / 5.5 px). x (0.12) not measured.
-  front_left:  {xyz: [0.12, 0.080, 0.098], yaw_deg: -1.1, pitch_deg: 4.6, roll_deg: 2.9}
-  front_right: {xyz: [0.12, -0.080, 0.090], yaw_deg: -3.4, pitch_deg: -0.8, roll_deg: -3.3}
+  front_left:  {xyz: [0.12, 0.080, 0.098], yaw_deg: -0.4, pitch_deg: 4.9, roll_deg: 4.2}   # refit 24 Nov evening on the dock pair (13.3 -> 5.5 px)
+  front_right: {xyz: [0.12, -0.080, 0.090], yaw_deg: -3.4, pitch_deg: -0.3, roll_deg: -6.1}  # camera turned ~3 deg in its mount (knocked at mechanical?)
   rear:        {xyz: [-0.12, 0.0, 0.20],  yaw_deg: 180.0, pitch_deg: 0.0}
   tray:        {xyz: [0.0, 0.0, 0.45],    yaw_deg: 0.0,   pitch_deg: 90.0}
 

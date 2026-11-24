@@ -15,7 +15,9 @@ import threading
 import time
 import wave
 
+import numpy as np
 import rclpy
+from std_msgs.msg import String
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
@@ -54,6 +56,15 @@ def make_beep():
         w.writeframes(struct.pack('<%dh' % len(frames), *frames))
 
 
+def show(text):
+    """State on the Mega's OLED (one 16-character line under "NONTOK SSF")."""
+    try:
+        oled_pub.publish(String(data=text[:16]))
+    except Exception:
+        pass
+    st['oled'] = text[:16]
+
+
 def say(name):
     path = SOUNDS + name + '.wav'
     if os.path.exists(path):
@@ -81,7 +92,7 @@ make_beep()
 beeper = Beeper()
 rclpy.init()
 n = Node('home_from_pickup')
-st = {'x': None, 'y': None, 'yaw': None, 'range': None, 'tags': {}, 'u': {}, 'tray': None, 'wake': 0}
+st = {'x': None, 'y': None, 'yaw': None, 'range': None, 'tags': {}, 'u': {}, 'c': {}, 'tray': None, 'wake': 0}
 # camera: (x, y, viewing yaw rad, fx, cx) from robot.yaml and the 24 Nov calibrations
 CAMS = {'front_left': (0.12, 0.080, math.radians(-1.1), 845.0, 627.8),
         'front_right': (0.12, -0.080, math.radians(-3.4), 840.0, 598.6)}
@@ -99,6 +110,7 @@ def on_tags(cam, m):
     now = time.time()
     st['tags'][cam] = (now, [d.id for d in m.detections])
     st['u'][cam] = (now, {d.id: sum(d.corners[0::2]) / 4.0 for d in m.detections})
+    st['c'][cam] = (now, {d.id: list(d.corners) for d in m.detections})
 
 
 n.create_subscription(Odometry, 'odometry/local', on_odom, 20)
@@ -116,6 +128,8 @@ tray_enable = n.create_client(SetBool, 'tray/enable')
 tray_reference = n.create_client(Trigger, 'tray/capture_reference')
 classify = n.create_client(ClassifyItem, 'tray/classify')
 set_tray = n.create_client(SetTray, 'base/set_tray')
+oled_pub = n.create_publisher(String, 'base/oled', 5)
+LENSES = {}   # filled on first use (tag_poses)
 ex = rclpy.executors.MultiThreadedExecutor()
 ex.add_node(n)
 threading.Thread(target=ex.spin, daemon=True).start()
@@ -137,13 +151,13 @@ def call(client, request, timeout=10.0):
     return f.result()
 
 
-def send(vx=0.0, wz=0.0):
+def send(vx=0.0, wz=0.0, vy=0.0):
     t = Twist()
-    t.linear.x, t.angular.z = float(vx), float(wz)
+    t.linear.x, t.linear.y, t.angular.z = float(vx), float(vy), float(wz)
     pub.publish(t)
 
 
-def stop(sec=0.8):
+def stop(sec=0.4):
     end = time.time() + sec
     while time.time() < end:
         send()
@@ -245,7 +259,7 @@ def tags_seen(ids):
 
 def find_tags(ids, max_deg=40, step=10):
     """Tags in view now, else turn in steps (+10, -20, +30 ...) up to +-max_deg around here."""
-    time.sleep(1.2)
+    time.sleep(0.6)
     if tags_seen(ids):
         log('tags %s in view: %s' % (ids, tags_seen(ids)))
         return
@@ -256,7 +270,7 @@ def find_tags(ids, max_deg=40, step=10):
             break
         turn(target - offset)
         offset = target
-        time.sleep(1.2)
+        time.sleep(0.6)
         if tags_seen(ids):
             log('tags %s found at %+d deg: %s' % (ids, offset, tags_seen(ids)))
             return
@@ -264,61 +278,197 @@ def find_tags(ids, max_deg=40, step=10):
     raise Abort('tags %s not found within +-%d deg' % (ids, max_deg))
 
 
-def pair_bearing(ids):
-    """Bearing (rad, + = left) from the robot centre to the middle of the tag pair, from the pixel positions,
-    the camera mounts and the front range (no pose solve). None if no tag of the pair is in view."""
+TAG_SIZE = 0.16
+
+
+def load_lens(cam):
+    import yaml
+    y = yaml.safe_load(open('/nontok/ros2_ws/src/nontok_localization/config/cameras/%s.yaml' % cam))
+    return np.array(y['camera_matrix'], float).reshape(3, 3), np.array(y['distortion'], float)
+
+
+H = TAG_SIZE / 2
+TAG_CORNERS = np.array([[-H, H, 0], [H, H, 0], [H, -H, 0], [-H, -H, 0]], float)   # detector corner order
+
+
+MOUNTS = {}   # camera -> 4x4 base_link <- optical, from robot.yaml (filled on first use)
+
+
+def load_mount(cam):
+    import yaml
+    from nontok_localization.geometry import camera_mount
+    c = yaml.safe_load(open('/nontok/ros2_ws/src/nontok_description/config/robot.yaml'))['cameras'][cam]
+    return camera_mount(*c['xyz'], math.radians(c['yaw_deg']), math.radians(c.get('pitch_deg', 0.0)),
+                        math.radians(c.get('roll_deg', 0.0)))
+
+
+def tag_poses(corner_sets, lenses=None, mounts=None):
+    """{cam: {id: [8 corners]}} -> {id: (x, y, wall_dx, wall_dy)} in the robot frame (x forward, y left):
+    the tag centre and the unit direction into the wall, from cv2.solvePnP (IPPE_SQUARE) with the lens model,
+    averaged over the cameras. Fits worse than 3 px are dropped."""
+    import cv2
+    if lenses is None:
+        for cam in CAMS:
+            if cam not in LENSES:
+                LENSES[cam] = load_lens(cam)
+        lenses = LENSES
+    if mounts is None:
+        for cam in CAMS:
+            if cam not in MOUNTS:
+                MOUNTS[cam] = load_mount(cam)
+        mounts = MOUNTS
+    acc = {}
+    for cam, cs in corner_sets.items():
+        if cam not in lenses or cam not in mounts:
+            continue
+        K, D = lenses[cam]
+        T = mounts[cam]
+        for i, corners in cs.items():
+            img = np.array(corners, float).reshape(4, 2)
+            ok, rvec, tvec = cv2.solvePnP(TAG_CORNERS, img, K, D, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+            if not ok:
+                continue
+            err = np.linalg.norm(cv2.projectPoints(TAG_CORNERS, rvec, tvec, K, D)[0].reshape(4, 2) - img, axis=1).mean()
+            if err > 3.0:
+                continue
+            centre = T @ np.r_[tvec.ravel(), 1.0]                    # tag centre in base_link
+            d = T[:3, :3] @ -cv2.Rodrigues(rvec)[0][:, 2]            # normal points at the camera; minus = into the wall
+            x, y, dx, dy = centre[0], centre[1], d[0], d[1]
+            acc.setdefault(i, []).append((x, y, dx, dy))
+    out = {}
+    for i, v in acc.items():
+        x, y, dx, dy = (sum(q[k] for q in v) / len(v) for k in range(4))
+        nrm = math.hypot(dx, dy) or 1.0
+        out[i] = (x, y, dx / nrm, dy / nrm)
+    return out
+
+
+def pair_geometry(poses, ids, half=0.15):
+    """(skew_deg, middle_x, middle_y) of a tag pair: skew = turn that faces the wall square (+ = left),
+    middle = the pair's centre. Both tags: from the line between them. One tag: from its own normal, the
+    middle 15 cm along the wall from it (lower id = left tag). None if neither is seen."""
     left_id, right_id = min(ids), max(ids)
-    d = st['range'] if st['range'] is not None and 0.2 < st['range'] < NO_ECHO else 0.6
-    points = []
+    if left_id in poses and right_id in poses:
+        (lx, ly, _, _), (rx, ry, _, _) = poses[left_id], poses[right_id]
+        wx, wy = lx - rx, ly - ry
+        return math.degrees(math.atan2(-wx, wy)), (lx + rx) / 2, (ly + ry) / 2
+    for i, sign in ((left_id, -1), (right_id, +1)):
+        if i in poses:
+            x, y, dx, dy = poses[i]
+            ax, ay = -dy, dx                          # along the wall, toward the left tag
+            return math.degrees(math.atan2(dy, dx)), x + sign * half * ax, y + sign * half * ay
+    return None
+
+
+def fresh_corners():
     now = time.time()
-    for cam, (t, us) in st['u'].items():
-        if now - t > 1.0 or cam not in CAMS:
-            continue
-        cx_, cy_, cyaw, f, c0 = CAMS[cam]
-        found = {}
-        for i in ids:
-            if i in us:
-                b = cyaw - math.atan((us[i] - c0) / f)
-                found[i] = (cx_ + d * math.cos(b), cy_ + d * math.sin(b))   # wall depth ~ front range
-        if left_id in found and right_id in found:
-            points.append(((found[left_id][0] + found[right_id][0]) / 2, (found[left_id][1] + found[right_id][1]) / 2))
-        elif left_id in found:
-            points.append((found[left_id][0], found[left_id][1] - HALF_SPACING))
-        elif right_id in found:
-            points.append((found[right_id][0], found[right_id][1] + HALF_SPACING))
-    if not points:
+    return {cam: cs for cam, (t, cs) in st['c'].items() if now - t < 0.8}
+
+
+STRAFE_MIN, STRAFE_MAX = 0.07, 0.14   # m/s: 0.04 left the omni wheels standing still sideways (24 Nov)
+
+
+def strafe(dist, limit=15.0):
+    """Sideways on the omni wheels: dist > 0 to the left, on the wheel odometry, holding the heading
+    (an unheld 5 cm crab turned the robot ~5 deg). If it moves < 1 cm in 1.5 s the speed goes up in steps
+    (below a threshold the wheels just stand still); still stuck at full speed = blocked: stop, report and
+    carry on - the dock server corrects what is left."""
+    x0, y0, yaw0 = st['x'], st['y'], st['yaw']
+    sign = 1 if dist > 0 else -1
+    end = time.time() + limit
+    boost = 0.0
+    last_t, last_done = time.time(), 0.0
+    while True:
+        done = math.hypot(st['x'] - x0, st['y'] - y0)
+        if done >= abs(dist) - 0.005:
+            break
+        if time.time() - last_t > 1.5:
+            if done - last_done < 0.01:
+                if STRAFE_MIN + boost >= STRAFE_MAX:
+                    log('strafe blocked after %.3f of %.3f m at %.2f m/s - carrying on' % (done, abs(dist), STRAFE_MAX))
+                    break
+                boost += 0.03
+                log('strafe: not moving, speed up to %.2f m/s' % min(STRAFE_MAX, STRAFE_MIN + boost))
+            last_t, last_done = time.time(), done
+        if time.time() > end:
+            log('strafe: %.3f of %.3f m in %.0f s - carrying on' % (done, abs(dist), limit))
+            break
+        speed = min(STRAFE_MAX, max(STRAFE_MIN + boost, min(0.10, 0.8 * (abs(dist) - done))))
+        hold = max(-0.25, min(0.25, -2.0 * wrap(st['yaw'] - yaw0)))
+        send(vy=sign * speed, wz=hold)
+        time.sleep(0.05)
+    stop()
+    log('strafed %+.3f m (encoders), heading change %+.1f deg' % (
+        sign * math.hypot(st['x'] - x0, st['y'] - y0), math.degrees(wrap(st['yaw'] - yaw0))))
+
+
+def push_in(dist, limit=8.0):
+    """Forward on the encoders only, ignoring the front sensor (it reads the box itself), slowly, until `dist`
+    or the wheels stall against the box (< 5 mm in 1 s). 24 Nov: the mechanical drop landed ~20 cm short."""
+    x0, y0 = st['x'], st['y']
+    end = time.time() + limit
+    last_t, last_done = time.time(), 0.0
+    while True:
+        done = math.hypot(st['x'] - x0, st['y'] - y0)
+        if done >= dist - 0.005:
+            break
+        if time.time() - last_t > 1.0:
+            if done - last_done < 0.005:
+                log('push: against something after %.3f m' % done)
+                break
+            last_t, last_done = time.time(), done
+        if time.time() > end:
+            break
+        send(vx=0.05)
+        time.sleep(0.05)
+    stop()
+    log('pushed in %.3f m (encoders), front %.3f m' % (math.hypot(st['x'] - x0, st['y'] - y0), st['range'] or -1))
+
+
+def measure(ids, secs=0.6):
+    """The pair's (skew, middle x, middle y), the median over `secs` of fresh frames (both cameras)."""
+    vals, end = [], time.time() + secs
+    while time.time() < end:
+        g = pair_geometry(tag_poses(fresh_corners()), ids)
+        if g is not None:
+            vals.append(g)
+        time.sleep(0.1)
+    if not vals:
         return None
-    x = sum(q[0] for q in points) / len(points)
-    y = sum(q[1] for q in points) / len(points)
-    return math.atan2(y, x)
+    return tuple(float(np.median([v[k] for v in vals])) for k in range(3))
 
 
-def center_on(ids, tries=4):
-    """Turn until the middle of the tag pair is straight ahead (both cameras then see both tags)."""
+def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.025):
+    """Square to the wall (one turn), then crab until the pair's middle is straight ahead (one slide).
+    Acts only beyond 3 deg / 2.5 cm so it does not chase noise."""
     for _ in range(tries):
-        time.sleep(1.2)
-        b = pair_bearing(ids)
-        if b is None:
-            find_tags(ids, max_deg=60)
+        time.sleep(0.3)
+        g = measure(ids)
+        if g is None:
+            log('square: no tag of %s in view, searching' % (ids,))
+            find_tags(ids, max_deg=40)
             continue
-        log('pair %s middle at %+.1f deg, seen %s' % (ids, math.degrees(b), tags_seen(ids)))
-        if abs(math.degrees(b)) < 2.5:
-            return
-        turn(max(-30.0, min(30.0, math.degrees(b))))
-    log('centred on %s: %s' % (ids, tags_seen(ids)))
+        skew, mx, my = g
+        log('square: wall skew %+.1f deg, pair middle %+.3f m sideways, %.2f m ahead' % (skew, my, mx))
+        if abs(skew) > skew_tol:
+            turn(max(-35.0, min(35.0, skew)))
+            continue
+        if abs(my) > side_tol:
+            strafe(max(-0.40, min(0.40, my)))
+            continue
+        return
+    log('square: best effort after %d tries' % tries)
 
 
 def visual_park(ids, contact):
-    """No pose solve: centre on the tag pair while farther than 0.42 m (5 cm steps), then straight in on the
-    encoders to the contact distance. Closer than ~0.4 m one tag leaves a camera's view (24 Nov run), so no
-    more centring there - the dock server's blind finish works the same way."""
+    """No pose solve: square and centre, in to 0.45 m, one more check, then straight in on the encoders to the
+    contact distance (closer than ~0.4 m a tag leaves a camera's view, so no centring there)."""
     log('visual park on %s to front %.3f m' % (ids, contact))
-    for _ in range(12):
-        r = st['range']
-        if r is None or r <= 0.42:
-            break
-        center_on(ids, tries=3)
-        drive(max(0.02, min(0.05, r - 0.42)), stop_front=0.42)
+    square_and_center(ids, tries=2)
+    r = st['range']
+    if r is not None and r > 0.47:
+        drive(min(0.30, r - 0.45), stop_front=0.45)
+        square_and_center(ids, tries=2)
     r = st['range'] or 0.3
     if r > contact + 0.005:
         drive(min(0.30, r - contact), stop_front=contact)
@@ -326,16 +476,21 @@ def visual_park(ids, contact):
 
 
 def dock_centred(station, ids, guard, contact):
+    dock_centred_inner(station, ids, guard, contact)
+    WHERE['at'] = station
+
+
+def dock_centred_inner(station, ids, guard, contact):
     r = st['range']
     if r is not None and r < 0.45:   # a retry from close in: back out to where both tags are in view
         drive(-(0.55 - r))
-    center_on(ids)
+    square_and_center(ids)
     try:
         dock_at(station, guard)
     except Abort as e:
-        if 'not seen' not in str(e):
+        if 'not seen' not in str(e) and 'lost the station tags' not in str(e):
             raise
-        visual_park(ids, contact)
+        visual_park(ids, contact)   # 24 Nov: boxes near the pickup hide the tags in the last ~0.2 m
 
 
 def dock_at(station, guard, limit=45.0):
@@ -400,7 +555,9 @@ DEFAULT_ARGV = {   # used when a node is not running at the start (24 Nov: the w
     'mic': ['ros2', 'run', 'nontok_voice', 'wake_node', '--ros-args', '--params-file',
             SHARE % ('nontok_voice', 'nontok_voice', 'voice.yaml')],
     'tray': ['ros2', 'run', 'nontok_perception', 'tray_node', '--ros-args', '--params-file',
-             SHARE % ('nontok_perception', 'nontok_perception', 'tray.yaml')]}
+             SHARE % ('nontok_perception', 'nontok_perception', 'tray.yaml')],
+    'mega': ['ros2', 'run', 'nontok_base', 'base_bridge', '--ros-args', '--params-file',
+             SHARE % ('nontok_base', 'nontok_base', 'base.yaml'), '-p', 'port:=/dev/nontok_mega']}
 ALL_HW = ('mega', 'cams', 'speaker', 'mic', 'tray_hw')   # checked before every step
 
 
@@ -575,6 +732,7 @@ def fix(name, ok, settle, reset=True):
     if wait_for(ok, 3.0):
         return True
     log('USB: %s silent: restarting its node' % name)
+    show('USB FIX %s' % {'front_left': 'CAM L', 'front_right': 'CAM R'}.get(name, name.upper()))
     restart_node(name)
     if wait_for(ok, settle):
         log('USB: %s back' % name)
@@ -638,30 +796,58 @@ def check(needs):
         st['range'] or -1, sorted(c for c in ('front_left', 'front_right') if cam_ok(c)), mic_status()[1]))
 
 
-def step(name, fn, needs, motion=False, tries=4):
+ARMED = {'on': False}
+WHERE_FILE = '/tmp/nontok_where'   # survives a crash and restart by the supervisor
+
+
+class Where(dict):
+    """Last place it parked: 'dock', 'pickup', 'electrical', 'mechanical'; 'away' once it drives off."""
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        try:
+            open(WHERE_FILE, 'w').write(value or '')
+        except OSError:
+            pass
+
+
+WHERE = Where()
+try:
+    dict.__setitem__(WHERE, 'at', open(WHERE_FILE).read().strip() or None)
+except OSError:
+    dict.__setitem__(WHERE, 'at', None)
+
+
+def arm_if(on):
+    if ARMED['on'] != on:
+        set_arm(on)
+        ARMED['on'] = on
+
+
+LABELS = {'home: back off': 'FIND DOCK', 'home: find the dock': 'FIND DOCK', 'home: approach the dock': 'FIND DOCK', 'home: park at the dock': 'DOCKING', 'leave the dock': 'TO PICKUP', 'approach the pickup': 'TO PICKUP', 'park at the pickup': 'PARK PICKUP', 'leave the pickup': 'LEAVE PICKUP', 'approach electrical': 'TO ELECTRICAL', 'park at electrical': 'PARK ELECTRICAL', 'leave electrical': 'GOING HOME', 'pickup to mechanical': 'TO MECHANICAL', 'approach the dock': 'GOING HOME', 'park at the dock': 'DOCKING', 'approach mechanical': 'TO MECHANICAL', 'park at mechanical': 'PARK MECHANICAL', 'mechanical to the pickup row': 'GOING HOME'}   # 16-character OLED text per step
+
+
+def step(name, fn, needs, motion=False, tries=4, oled=None):
+    """Hardware check, then the step; armed only for driving steps and kept armed between consecutive ones
+    (24 Nov: disarm / re-arm around every step cost ~1 s each). Retried up to `tries` times."""
     for k in range(1, tries + 1):
         try:
+            show(oled or LABELS.get(name, name.upper()))
             check(needs)
+            arm_if(motion)
             if motion:
-                set_arm(True)
+                WHERE['at'] = 'away'
             fn()
-            if motion:
-                stop()
-                set_arm(False)
+            stop()
             return
         except Abort as e:
             stop()
             try:
-                set_arm(False)
+                arm_if(False)
             except Abort:
-                pass
+                ARMED['on'] = False
+            show('RETRY %s' % (oled or LABELS.get(name, name.upper())))
             log('STEP %s try %d failed: %s' % (name, k, e))
-            if k >= 2:   # devices looked fine but the step still fails: reset the cameras it relies on anyway
-                for cam in ('front_left', 'front_right'):
-                    if 'cams' in needs:
-                        usb_reset(cam)
-                        restart_node(cam)
-            time.sleep(2.0)
+            time.sleep(2.0)   # USB resets only when a device fails the check at the start of the next try
     raise Abort('step %s failed %d times' % (name, tries))
 
 
@@ -700,17 +886,24 @@ def leave_wall(prefix, out_to, turns):
         once(prefix + 'turn%d' % i, lambda: turn(90.0))
 
 
-def approach(prefix, ids):
+def approach(prefix, ids, dist=0.90):
     if not tags_seen(ids):
         find_tags(ids, max_deg=40)
-    once(prefix + 'drive', lambda: drive(0.90, stop_front=0.60))
+    once(prefix + 'drive', lambda: drive(dist, stop_front=0.60))
     ensure_far(ids)
 
 
 def ensure_far(ids):
     if not tags_seen(ids):
         find_tags(ids, max_deg=60)
-    center_on(ids)
+    square_and_center(ids)
+    r = st['range']
+    if r is None or r >= NO_ECHO:   # beyond the ultrasonic: close in on the camera distance to the tags
+        g = measure(ids)
+        if g is not None and g[1] > 0.95:
+            log('far: tags %.2f m ahead, ultrasonic sees nothing - driving in on the camera distance' % g[1])
+            drive(min(1.60, g[1] - 0.85), stop_front=0.60, limit=30.0)
+            square_and_center(ids)
     if st['range'] is not None and 0.65 < st['range'] < NO_ECHO:
         creep_to(0.60, max_dist=0.80, limit=30.0)   # stops on the 0.60 m reading; 0.50 was hit on 24 Nov
 
@@ -758,10 +951,21 @@ def dump():
 
 
 
+OTHER_TAGS = (2, 3, 10, 11, 12, 13)
+
+
 def docked():
+    """At the dock: the dock tags in view within 0.65 m; or right at a wall (<= 0.30 m, where the cameras are
+    too close to see the dock tags) when the last place it parked was the dock (or nothing is known yet, i.e.
+    just started) and no other station's tags are in view. 24 Nov review: "any wall within 0.30 m" would have
+    taken the pickup for the dock after a run stopped there."""
     time.sleep(1.2)
-    r = st['range']   # docked, the cameras are too close to see the dock tags (24 Nov)
-    return r is not None and (r <= 0.30 or (r <= 0.65 and bool(tags_seen((0, 1)))))
+    r = st['range']
+    if r is None:
+        return False
+    if r <= 0.65 and tags_seen((0, 1)):
+        return True
+    return r <= 0.30 and WHERE['at'] in (None, 'dock') and not tags_seen(OTHER_TAGS)
 
 
 def spin_search(ids, step_deg=30):
@@ -788,16 +992,24 @@ def go_home():
          ('mega', 'cams'), motion=True)
 
 
-def mission():
+def mission(test_station=None):
     done.clear()
     answer.clear()
-    step('wait for the wake word', wake, ('mega', 'cams', 'mic', 'speaker'))
+    if test_station:
+        show('TEST %s' % test_station.upper())
+        log('TEST: no wake word, no item, station %s' % test_station)
+    else:
+        step('wait for the wake word', wake, ('mega', 'cams', 'mic', 'speaker'), oled='SAY NONTOK')
     say('answer')
     step('leave the dock', lambda: leave_wall('dock.', 0.70, 2), ('mega',), motion=True)
     step('approach the pickup', lambda: approach('pickup.', (2, 3)), ('mega', 'cams'), motion=True)
     step('park at the pickup', lambda: dock_centred('pickup', (2, 3), guard=0.12, contact=0.213),
          ('mega', 'cams'), motion=True)
-    step('get the item', get_item, ('tray', 'speaker'))
+    if test_station:
+        answer.update(item='test', station=test_station)
+    else:
+        step('get the item', get_item, ('tray', 'speaker'), oled='PUT ITEM IN')
+    show(('%s>%s' % (answer.get('item') or 'NO ITEM', (answer.get('station') or 'HOME')[:4])).upper())
     call(tray_enable, SetBool.Request(data=False))
     if answer.get('station') == 'electrical':
         step('leave the pickup', lambda: (once('pickup.back', lambda: drive(-0.10)),
@@ -805,15 +1017,26 @@ def mission():
         step('approach electrical', lambda: ensure_far((10, 11)), ('mega', 'cams'), motion=True)
         step('park at electrical', lambda: dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
              ('mega', 'cams'), motion=True)
-        step('dump', dump, ('mega', 'speaker'))
+        step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
         say('going_home')
         step('leave electrical', lambda: (once('elec.back9', lambda: drive(-0.90)),
                                           once('elec.turn', lambda: turn(90.0))), ('mega',), motion=True)
+        home_dist = 0.90
+    elif answer.get('station') == 'mechanical':
+        # 24 Nov, given by the team: from the pickup back 0.30 m, right 90, forward 0.90 m, left 90, dock
+        step('pickup to mechanical', lambda: (
+            once('mech.back', lambda: drive(-0.30)),
+            once('mech.right', lambda: turn(-90.0)),
+            once('mech.along', lambda: drive(1.10, stop_front=0.35)),   # 0.90 ended ~0.2 m short (24 Nov)
+            once('mech.left', lambda: turn(90.0))), ('mega',), motion=True)
+        mechanical_tail()
+        return
     else:
         log('item %r -> %r: no driven route there yet, taking it home' % (answer.get('item'), answer.get('station')))
         say('going_home')
         step('leave the pickup', lambda: leave_wall('pick.', 0.70, 2), ('mega',), motion=True)
-    step('approach the dock', lambda: approach('home.', (0, 1)), ('mega', 'cams'), motion=True)
+        home_dist = 0.90
+    step('approach the dock', lambda: approach('home.', (0, 1), home_dist), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
     say('docked')
 
@@ -824,6 +1047,7 @@ def safe_stop():
         set_arm(False)
     except Exception:
         pass
+    ARMED['on'] = False
     for client in (tray_enable, voice_enable):
         try:
             call(client, SetBool.Request(data=False), 3)
@@ -831,13 +1055,64 @@ def safe_stop():
             pass
 
 
+def park_mechanical():
+    """The mechanical box stands ~0.4 m out from the tag wall and hides the tags from the low cameras as the
+    robot closes in (24 Nov: the dock server lost them every time at 0.23 m to go), and its front face is what
+    the ultrasonic reads. So: square and centre on the tags from ~0.55 m out, then push straight in on the
+    encoders until the wheels stall against the box (at most the measured gap + 3 cm)."""
+    r = st['range']
+    if r is not None and r < 0.45:   # a retry from close in: back out to where the tags are in view
+        drive(-(0.55 - r))
+    square_and_center((12, 13))
+    r = st['range']
+    gap = r if r is not None and r < NO_ECHO else 0.50
+    log('mechanical: box %.3f m ahead, pushing in' % gap)
+    push_in(min(0.65, gap + 0.03), limit=15.0)
+    WHERE['at'] = 'mechanical'
+
+
+def mechanical_tail():
+    step('approach mechanical', lambda: ensure_far((12, 13)), ('mega', 'cams'), motion=True)
+    step('park at mechanical', park_mechanical, ('mega', 'cams'), motion=True)
+    step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
+    say('going_home')
+    r0 = st['range']
+    step('mechanical to the pickup row', lambda: (
+        once('mhome.back', lambda: drive(-(0.51 - r0) if r0 is not None and r0 < 0.51 else -0.30)),
+        once('mhome.left1', lambda: turn(90.0)),
+        once('mhome.along', lambda: drive(1.10, stop_front=0.35)),
+        once('mhome.left2', lambda: turn(90.0))), ('mega',), motion=True)
+    step('approach the dock', lambda: approach('home.', (0, 1), 1.10), ('mega', 'cams'), motion=True)
+    step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
+    say('docked')
+    show('DOCKED')
+
+
 # ---- forever: listen, deliver, come home; after any failure find the dock again ----
 time.sleep(1.5)
 learn()
+log('last known place: %s' % WHERE['at'])
 runs = 0
+TEST_FILE = '/tmp/nontok_test'   # holds how many unattended test loops are left (no wake word, no item)
+TEST_STATIONS = ('mechanical', 'electrical')
+TEST = {'n': 0, 'fails': 0}
+RESUME = '/tmp/resume_mechanical'
+if os.path.exists(RESUME):   # a run stopped in front of the mechanical station with the item still aboard
+    os.remove(RESUME)
+    try:
+        log('RESUME: finishing at the mechanical station')
+        mechanical_tail()
+        log('RESUME DONE: dumped at mechanical, robot docked')
+    except Abort as e:
+        safe_stop()
+        log('RESUME STOPPED: %s' % e)
 while True:
     try:
         home_tries = 0
+        try:
+            check(())   # hardware first: after charging the Mega and cameras were silent and "not docked" was wrong
+        except Abort as e:
+            log('hardware check before the docked test: %s' % e)
         while not docked() and home_tries < 3:
             home_tries += 1
             log('not docked (front %.2f m, dock tags %s): going home, try %d' % (
@@ -848,12 +1123,34 @@ while True:
                 safe_stop()
                 log('going home failed: %s' % e)
                 time.sleep(5.0)
-        mission()
+        test = None
+        if os.path.exists(TEST_FILE):
+            left = int(open(TEST_FILE).read().strip() or 0)
+            if left > 0:
+                test = TEST_STATIONS[TEST['n'] % len(TEST_STATIONS)]
+            else:
+                os.remove(TEST_FILE)
+        t0 = time.time()
+        mission(test)
+        show('DOCKED')
         runs += 1
         log('MISSION %d DONE: %s, robot docked' % (runs, answer.get('item')))
+        if test:
+            TEST['n'] += 1
+            TEST['fails'] = 0
+            open(TEST_FILE, 'w').write(str(left - 1))
+            log('TEST LOOP %d OK: %s in %.0f s' % (TEST['n'], test, time.time() - t0))
+            time.sleep(10.0)
     except Abort as e:
         safe_stop()
         log('MISSION STOPPED (safe, disarmed): %s - recovering and listening again' % e)
+        if os.path.exists(TEST_FILE):
+            TEST['fails'] += 1
+            TEST['n'] += 1   # next station anyway, so every station gets tested
+            log('TEST LOOP FAILED (%d in a row)' % TEST['fails'])
+            if TEST['fails'] >= 2:
+                os.remove(TEST_FILE)
+                log('TEST: two failures in a row - test loops stopped')
         time.sleep(5.0)
     except Exception as e:   # a bug must not end the service either; the supervisor restarts on a crash
         safe_stop()
