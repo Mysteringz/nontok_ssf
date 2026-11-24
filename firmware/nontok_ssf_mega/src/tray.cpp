@@ -1,8 +1,7 @@
-// Tray servo, voltage sensing and the optional status display.
-#include <Servo.h>
-
+// Tray dump stepper, voltage sensing and the optional status display.
 #include "config.h"
 #include "drivers.h"
+#include "stepper_driver.h"
 
 #if OLED_ENABLED
 #include <U8x8lib.h>
@@ -10,49 +9,59 @@ static U8X8_SSD1306_128X32_UNIVISION_HW_I2C oled(U8X8_PIN_NONE);
 #endif
 
 // ---------------- Tray ----------------
-static Servo servo;
-static uint8_t currentDeg = 0, targetDeg = 0;
-static bool moving = false;
+// The driver holds torque from the first move up until the tray is back at 0 deg, so a tipped
+// tray cannot fall under the item's weight; at rest it is released after TRAY_RELEASE_MS.
+static StepperDriver stepper;
+static bool moving = false, releasePending = false;
 static unsigned long restSinceMs = 0;
 
-static void writeServo() {
-  servo.write(TRAY_REST_SERVO_DEG + TRAY_SERVO_DIR * (int)currentDeg);
-}
-
 void trayBegin() {
-  // Attached only on the first command, so a robot without a tray never drives the pin.
+  StepperDriver::Config c;
+  c.periodUs = TRAY_STEP_PERIOD_US;
+  c.startPeriodUs = TRAY_START_PERIOD_US;
+  c.rampSteps = TRAY_RAMP_STEPS;
+  c.invert = TRAY_STEPPER_INVERT;
+  stepper = StepperDriver(c);
+  stepper.begin();  // driver off, position 0
 }
 
-void traySetTarget(uint8_t deg) {
-  targetDeg = deg > TRAY_MAX_DEG ? TRAY_MAX_DEG : deg;
-  moving = true;
-  if (!servo.attached()) {
-    servo.attach(TRAY_SERVO_PIN);
-    writeServo();
-  }
+void traySetTarget(int16_t deg) {
+  if (deg < 0) deg = 0;
+  if (deg > TRAY_MAX_DEG) deg = TRAY_MAX_DEG;
+  stepper.setHold(true);
+  releasePending = false;
+  stepper.startSteps(stepper.degreesToSteps(deg) - stepper.position());
+  moving = true;  // a zero-length move reports DONE on the next pass
+}
+
+void trayStop() {
+  stepper.stop();  // hold stays on: a tipped tray keeps its place
+  moving = false;
 }
 
 bool trayService(unsigned long nowMs) {
   if (moving) {
-    if (currentDeg < targetDeg) {
-      currentDeg = (targetDeg - currentDeg > TRAY_UP_DEG_PER_CYCLE) ? currentDeg + TRAY_UP_DEG_PER_CYCLE : targetDeg;
-    } else if (currentDeg > targetDeg) {
-      currentDeg = (currentDeg - targetDeg > TRAY_DOWN_DEG_PER_CYCLE) ? currentDeg - TRAY_DOWN_DEG_PER_CYCLE : targetDeg;
-    }
-    writeServo();
-    if (currentDeg == targetDeg) {
-      moving = false;
+    if (stepper.service()) return false;
+    moving = false;
+    if (stepper.position() == 0) {
+      releasePending = true;
       restSinceMs = nowMs;
-      return true;
     }
-    return false;
+    return true;
   }
-  // Flat and idle: release the servo so it neither buzzes nor loads the supply.
-  if (currentDeg == 0 && servo.attached() && nowMs - restSinceMs >= TRAY_DETACH_MS) servo.detach();
+  if (releasePending && nowMs - restSinceMs >= TRAY_RELEASE_MS) {
+    releasePending = false;
+    stepper.setHold(false);  // flat and idle: driver off, no heat, no supply load
+  }
   return false;
 }
 
-uint8_t trayDeg() { return currentDeg; }
+bool trayMoving() { return moving; }
+
+uint8_t trayDeg() {
+  const float d = stepper.positionDegrees();
+  return d <= 0 ? 0 : d >= 255 ? 255 : (uint8_t)(d + 0.5f);
+}
 
 // ---------------- Voltage sensing ----------------
 static uint16_t readMillivolts(uint8_t pin, float divider) {

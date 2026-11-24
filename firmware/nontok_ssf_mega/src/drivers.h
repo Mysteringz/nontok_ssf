@@ -28,9 +28,11 @@ void imuRequestBias();                       // re-measure the bias the next tim
 uint16_t imuTimeouts();
 
 // ---- tray.cpp ----
-void trayBegin();
-void traySetTarget(uint8_t deg);
-bool trayService(unsigned long nowMs);       // call every cycle; true once when the target is reached
+void trayBegin();                            // stepper driver off; the current position is 0 deg
+void traySetTarget(int16_t deg);             // clipped to 0..TRAY_MAX_DEG
+void trayStop();                             // emergency stop: no DONE TRAY, the position is kept
+bool trayService(unsigned long nowMs);       // call every loop() pass; true once when the target is reached
+bool trayMoving();
 uint8_t trayDeg();
 
 // ---- power.cpp ----
