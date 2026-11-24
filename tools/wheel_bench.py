@@ -5,6 +5,7 @@
   python3 wheel_bench.py watch   # hand test: live encoder counts and turns, never arms
   python3 wheel_bench.py ff      # FFTEST: open-loop PWM 30/40/50/60/90/120 both ways (--levels), fits FF
   python3 wheel_bench.py hold    # speed hold 100/200/300 mm/s both ways, then strafe and turn
+  python3 wheel_bench.py drive   # ON THE FLOOR: straight --distance mm (default 1000) at --speed 150
 
 ff and hold drive the motors: wheels raised, 12 V on, a hand on the cut-off switch. They ask you
 to type LIFTED first. Every exit (end, Ctrl-C, error, lost SSH) sends '!' to stop and disarm.
@@ -381,13 +382,87 @@ def run_hold(bench, args):
     print('Columns: measured/target mm/s. RR (M4) direction is assumed from the command: watch it.')
 
 
+# ---------------- drive (on the floor) ----------------
+def run_drive(bench, args):
+    """Straight line forward (or back with a negative distance) by encoder distance, then stop.
+    The firmware ramps at ACCEL_MM_S2, so VEL 0 is sent one stopping distance early."""
+    dist, speed = args.distance, args.speed
+    sign = 1 if dist > 0 else -1
+    print('ON THE FLOOR. Drives %+d mm at %d mm/s, then stops. Clear path, someone ready to grab it '
+          'or cut 12 V.' % (dist, speed))
+    print('Type FLOOR to go on:', end=' ', flush=True)
+    if sys.stdin.readline().strip() != 'FLOOR':
+        print('Not confirmed; nothing was sent.')
+        sys.exit(1)
+    bench.send('ARM')
+    bench.wait_for('OK ARM', 2.0)
+    brake_mm = speed ** 2 / (2 * ACCEL_MM_S2)
+    start = None
+    heading = 0.0
+    last_t = None
+    last_vel = 0.0
+    braking = False
+    t_start = time.time()
+    timeout = abs(dist) / speed + 6
+    still_since = None
+    last_counts = None
+    travelled = 0.0
+    while True:
+        now = time.time()
+        if now - t_start > timeout:
+            raise RuntimeError('timeout after %.0f s at %.0f mm: stopped' % (timeout, travelled))
+        if now - last_vel >= 0.1:
+            bench.send('VEL %d 0 0' % (0 if braking else sign * speed))
+            last_vel = now
+        for text in bench.lines():
+            if text.startswith('ERR') or text.startswith('READY'):
+                raise RuntimeError('Mega: ' + text)
+            if text.startswith('RNG') and not braking:
+                r = text.split()
+                if sign > 0 and len(r) == 7:
+                    front = [int(r[2]), int(r[3]), int(r[4])]  # FL45, FR45, front
+                    if 0 <= front[2] < 250 or any(0 <= v < 150 for v in front[:2]):
+                        raise RuntimeError('obstacle ahead (FL45/FR45/front %s mm): stopped' % front)
+            odo = parse_odo(text)
+            if not odo:
+                continue
+            t_ms, counts, gz = odo
+            if start is None:
+                start = list(counts)
+            if last_t is not None:
+                heading += gz * 0.001 * (t_ms - last_t) * 0.001
+            last_t = t_ms
+            per = [(c - s) * bench.mm_per_count for c, s in zip(counts, start)]
+            travelled = sum(per) / 4.0
+            if not braking and abs(travelled) >= abs(dist) - brake_mm:
+                braking = True
+                bench.send('VEL 0 0 0')
+                last_vel = now
+            if not braking and now - t_start > 2.0 and abs(travelled) < 30:
+                raise RuntimeError('hardly moving after 2 s (%.0f mm): wheels slip or stall; stopped' % travelled)
+            if braking:
+                if counts == last_counts:
+                    still_since = still_since or now
+                else:
+                    still_since = None
+                if still_since and now - still_since > 0.4:
+                    bench.send('DISARM')
+                    print('Stopped. Encoders: %+.0f mm (FL %+.0f  FR %+.0f  RL %+.0f  RR %+.0f), '
+                          'gyro heading change %+.1f deg.'
+                          % (travelled, per[0], per[1], per[2], per[3], math.degrees(heading)))
+                    print('Now MEASURE the real distance with a tape and tell Claude: wheel diameter '
+                          '= %.1f mm x measured / %.0f.' % (WHEEL_DIAMETER_MM, abs(travelled)))
+                    return
+            last_counts = counts
+
+
 def _interrupt(signum, frame):
     raise KeyboardInterrupt  # lost SSH (SIGHUP) or kill: leave through the stop in finally
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('mode', choices=('watch', 'ff', 'hold'))
+    p.add_argument('mode', choices=('watch', 'ff', 'hold', 'drive'))
     p.add_argument('--port', default='/dev/nontok_mega')
     p.add_argument('--log-dir', default=os.path.expanduser('~/Documents/David/wheel_bench'))
     p.add_argument('--wheel-mm', type=float, default=WHEEL_DIAMETER_MM,
@@ -395,6 +470,8 @@ def main():
     p.add_argument('--levels', type=int, nargs='+', default=[30, 40, 50, 60, 90, 120],
                    help='ff: open-loop PWM levels, 1..%d, at most 6' % MAX_PWM)
     p.add_argument('--speeds', type=int, nargs='+', default=[100, 200, 300], help='hold: mm/s')
+    p.add_argument('--distance', type=int, default=1000, help='drive: mm, negative = backward')
+    p.add_argument('--speed', type=int, default=150, help='drive: mm/s')
     p.add_argument('--seconds', type=float, default=3.0, help='hold: time per step')
     p.add_argument('--measure', type=float, default=1.5, help='hold: judged over the last N s')
     p.add_argument('--no-patterns', action='store_true', help='hold: skip strafe and turn')
@@ -403,6 +480,8 @@ def main():
         p.error('--speeds must be 1..%d' % MAX_WHEEL_MM_S)
     if any(v < 1 or v > MAX_PWM for v in args.levels) or not 2 <= len(set(args.levels)) <= 6:
         p.error('--levels: 2 to 6 different values, each 1..%d' % MAX_PWM)
+    if not 50 <= abs(args.distance) <= 3000 or not 50 <= args.speed <= 250:
+        p.error('drive: |--distance| 50..3000 mm, --speed 50..250 mm/s')
     if args.measure >= args.seconds:
         p.error('--measure must be shorter than --seconds')
 
@@ -412,7 +491,7 @@ def main():
     code = 0
     try:
         bench.wait_ready()
-        {'watch': run_watch, 'ff': run_ff, 'hold': run_hold}[args.mode](bench, args)
+        {'watch': run_watch, 'ff': run_ff, 'hold': run_hold, 'drive': run_drive}[args.mode](bench, args)
     except KeyboardInterrupt:
         print('\nStopped.')
     except RuntimeError as e:
