@@ -9,8 +9,8 @@
 # Pairs are 0.30 m centre to centre, centres 0.20 m high (confirmed 24 Nov).
 default_size: 0.160
 tags:
-  0:  {x: 0.35,  y: -0.15, z: 0.20, yaw_deg: 180.0}   # dock, RIGHT as you face it (hangs above 1). along 0,   out 105
-  1:  {x: 0.35,  y: 0.15,  z: 0.20, yaw_deg: 180.0}   # dock, LEFT as you face it.                  along 0,   out 135
+  0:  {x: 0.35,  y: 0.15,  z: 0.20, yaw_deg: 180.0}   # dock, LEFT as you face it (camera check 24 Nov; the map package had 0 and 1 swapped). along 0, out 135
+  1:  {x: 0.35,  y: -0.15, z: 0.20, yaw_deg: 180.0}   # dock, RIGHT as you face it. along 0, out 105
   2:  {x: -2.15, y: -0.15, z: 0.20, yaw_deg: 0.0}     # pickup, left.                               along 250, out 105
   3:  {x: -2.15, y: 0.15,  z: 0.20, yaw_deg: 0.0}     # pickup, right.                              along 250, out 135
   10: {x: -1.55, y: -1.20, z: 0.20, yaw_deg: 90.0}    # electrical, left.                           along 190, out 0

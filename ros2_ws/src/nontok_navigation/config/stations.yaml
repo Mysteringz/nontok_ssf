@@ -6,10 +6,10 @@
 #   lateral_offset_m + = stop right of centre (facing the tags)
 #   back_in          false: the tray tips out over the front (ultrasonic end)
 #   contact_range_m  front ultrasonic reading that counts as arrived (-1 / absent: docking.yaml's)
-# The dock pair hangs 0 above 1 on the left wall: facing it, 1 is on the left.
+# Dock pair: facing it, 0 is on the left, 1 on the right (camera check 24 Nov; the map package had them swapped).
 # No "unknown" or "tools" station (24 Nov): unrecognised items go back to the dock (mission unknown_station '').
 stations:
-  dock:       {tag_ids: [1, 0],   standoff_m: 0.35, approach_m: 1.10, is_dock: true}
+  dock:       {tag_ids: [0, 1],   standoff_m: 0.35, approach_m: 1.10, is_dock: true}
   pickup:     {tag_ids: [2, 3],   standoff_m: 0.33, approach_m: 0.90, contact_range_m: 0.213}   # 24 Nov: front 20 cm (13 cm sensor offset; it rolls ~1.3 cm on)
   electrical: {tag_ids: [10, 11], standoff_m: 0.38, approach_m: 0.90, contact_range_m: 0.225}   # 24 Nov: robot pressing the box (edge 22 cm from the wall), dump landed
   mechanical: {tag_ids: [12, 13], standoff_m: 0.35, approach_m: 0.90}   # not driven yet
