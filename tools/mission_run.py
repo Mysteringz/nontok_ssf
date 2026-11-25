@@ -230,7 +230,7 @@ def send(vx=0.0, wz=0.0, vy=0.0):
     pub.publish(t)
 
 
-def stop(sec=0.4):
+def stop(sec=0.2):
     end = time.time() + sec
     while time.time() < end:
         send()
@@ -255,9 +255,12 @@ def wrap(a):
     return math.atan2(math.sin(a), math.cos(a))
 
 
-PARK_SPEED = 0.08      # m/s: parking, creeping, short moves (field-tested 24 Nov)
-TRAVEL_SPEED = 0.20    # m/s: the legs between stations (25 Nov: 2.5x the parking speed)
-TRAVEL_ACCEL = 0.25    # m/s per s: ramp up, so the omni wheels do not slip and spoil the encoder distance
+PARK_SPEED = 0.12      # m/s: parking and short moves (was 0.08)
+TRAVEL_SPEED = 0.40    # m/s: legs between stations - the firmware's wheel limit (MAX_WHEEL_MM_S 400)
+TRAVEL_ACCEL = 0.30    # m/s per s: ramp up, the firmware's ACCEL_MM_S2; faster slips the omni wheels
+DECEL = 0.25           # m/s per s: speed is held to sqrt(2 DECEL x room left), so it stops where asked
+TURN_RATE = 1.2        # rad/s (firmware allows ~2: 400 mm/s / 0.1925 m)
+TURN_DECEL = 1.0       # rad/s per s, the same idea for turns
 
 
 def drive(dist, stop_front=None, limit=20.0, fast=False):
@@ -282,11 +285,11 @@ def drive(dist, stop_front=None, limit=20.0, fast=False):
         if time.time() > end:
             stop()
             raise Abort('drive: only %.2f of %.2f m in %.0f s' % (done, abs(dist), limit))
-        v = min(top, 0.8 * (abs(dist) - done))
-        if fast:
-            v = min(v, PARK_SPEED + TRAVEL_ACCEL * (time.time() - t0))
-            if sign > 0 and r is not None and r < NO_ECHO:
-                v = min(v, 0.8 * (r - (stop_front if stop_front is not None else 0.15)))
+        v = min(top, math.sqrt(2 * DECEL * max(0.0, abs(dist) - done)))
+        v = min(v, 0.06 + TRAVEL_ACCEL * (time.time() - t0))
+        if sign > 0 and r is not None and r < NO_ECHO:   # slow for what the front sees: stop before it
+            room = r - (stop_front if stop_front is not None else 0.15) - 0.02
+            v = min(v, math.sqrt(2 * DECEL * max(0.0, room)))
         # hold the heading: 25 Nov a 2.2 m leg at travel speed ended 13 deg off and 0.4 m to the side
         send(vx=sign * max(0.04, v), wz=max(-0.3, min(0.3, -2.0 * wrap(st['yaw'] - yaw0))))
         time.sleep(0.05)
@@ -308,7 +311,8 @@ def turn(deg, limit=12.0):
         if time.time() > end:
             stop()
             raise Abort('turn: %.1f of %.0f deg in %.0f s' % (math.degrees(turned), deg, limit))
-        w = max(0.12, min(0.35, 1.2 * abs(err)))
+        w = max(0.15, min(TURN_RATE, math.sqrt(2 * TURN_DECEL * abs(err)),
+                          0.15 + 2.0 * (time.time() - (end - limit))))   # ramp up, decelerate into the target
         send(wz=w if err > 0 else -w)
         time.sleep(0.05)
     stop()
@@ -637,6 +641,7 @@ def confirm_at_box(station):
 # docked robot inside the dock wall. The mission measures tag pairs all the time; each one fixes the pose.
 ANCHOR = {}
 _TAGS = {}
+ANCHOR_SKIP = {(10, 11)}   # electrical tags: ~0.4 m off in tags.yaml (25 Nov loops) - not used until measured
 FRONT_SENSOR_X = 0.13   # front ultrasonic ahead of the robot centre (robot.yaml)
 
 
@@ -671,7 +676,7 @@ def anchor_at_dock():
         set_anchor((0.35 - FRONT_SENSOR_X - r, 0.0, 0.0), 'parked at the dock')
 
 
-def measure(ids, secs=0.6):
+def measure(ids, secs=0.4):
     """The pair's (skew, middle x, middle y), the median over `secs` of fresh frames (both cameras)."""
     vals, end = [], time.time() + secs
     while time.time() < end:
@@ -684,7 +689,7 @@ def measure(ids, secs=0.6):
     g = tuple(float(np.median([v[k] for v in vals])) for k in range(3))
     try:
         tags = tags_map()
-        if all(i in tags for i in ids):
+        if all(i in tags for i in ids) and tuple(sorted(ids)) not in ANCHOR_SKIP:
             set_anchor(pose_from_pair(ids, g, tags), 'tags %s' % '/'.join(str(i) for i in ids))
     except Exception:
         pass
@@ -696,7 +701,7 @@ def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.04):
     Acts only beyond 3 deg / 4 cm so it does not chase noise: 25 Nov, 2-3 cm strafes twisted the robot
     3.5-5 deg, which then cost a turn and another measurement, 3-4 times per station."""
     for _ in range(tries):
-        time.sleep(0.3)
+        time.sleep(0.15)
         g = measure(ids)
         if g is None:
             log('square: no tag of %s in view, searching' % (ids,))
@@ -1014,9 +1019,15 @@ def fix(name, ok, settle, reset=True):
     return False
 
 
+LAST_CHECK = {'t': 0.0, 'needs': set()}
+
+
 def check(needs):
-    """Hardware check before every step: everything in ALL_HW plus what the step needs."""
+    """Hardware check before every step: everything in ALL_HW plus what the step needs. Skipped when the
+    same devices passed less than 8 s ago (back-to-back steps; the tray is always checked: it is switched)."""
     needs = set(needs) | set(ALL_HW)
+    if 'tray' not in needs and needs <= LAST_CHECK['needs'] and time.time() - LAST_CHECK['t'] < 8.0:
+        return
     bad = []
     if 'mega' in needs and not fix('mega', mega_ok, 10):
         bad.append('mega')
@@ -1056,7 +1067,9 @@ def check(needs):
         if not fix('tray', tray_on_ok, 30):
             bad.append('tray')
     if bad:
+        LAST_CHECK.update(t=0.0, needs=set())
         raise Abort('USB devices still silent: %s' % bad)
+    LAST_CHECK.update(t=time.time(), needs=needs)
     log('HW ok: Mega (front %.2f m), cameras %s, speaker, %s, tray camera' % (
         st['range'] or -1, sorted(c for c in ('front_left', 'front_right') if cam_ok(c)), mic_status()[1]))
 
@@ -1088,7 +1101,7 @@ def arm_if(on):
         ARMED['on'] = on
 
 
-LABELS = {'home: back off': 'FIND DOCK', 'home: find the dock': 'FIND DOCK', 'home: approach the dock': 'FIND DOCK', 'home: park at the dock': 'DOCKING', 'leave the dock': 'TO PICKUP', 'approach the pickup': 'TO PICKUP', 'park at the pickup': 'PARK PICKUP', 'leave the pickup': 'LEAVE PICKUP', 'approach electrical': 'TO ELECTRICAL', 'park at electrical': 'PARK ELECTRICAL', 'leave electrical': 'GOING HOME', 'pickup to mechanical': 'TO MECHANICAL', 'approach the dock': 'GOING HOME', 'park at the dock': 'DOCKING', 'approach mechanical': 'TO MECHANICAL', 'park at mechanical': 'PARK MECHANICAL', 'mechanical to the dock line': 'GOING HOME', 'pickup to electrical': 'TO ELECTRICAL', 'pickup to tools': 'TO TOOLS', 'approach tools': 'TO TOOLS', 'park at tools': 'PARK TOOLS', 'leave tools': 'GOING HOME'}   # 16-character OLED text per step
+LABELS = {'home: back off': 'FIND DOCK', 'home: find the dock': 'FIND DOCK', 'home: approach the dock': 'FIND DOCK', 'home: park at the dock': 'DOCKING', 'leave the dock': 'TO PICKUP', 'approach the pickup': 'TO PICKUP', 'park at the pickup': 'PARK PICKUP', 'leave the pickup': 'LEAVE PICKUP', 'approach electrical': 'TO ELECTRICAL', 'park at electrical': 'PARK ELECTRICAL', 'leave electrical': 'GOING HOME', 'pickup to mechanical': 'TO MECHANICAL', 'approach the dock': 'GOING HOME', 'park at the dock': 'DOCKING', 'approach mechanical': 'TO MECHANICAL', 'park at mechanical': 'PARK MECHANICAL', 'mechanical to the dock': 'GOING HOME', 'pickup to electrical': 'TO ELECTRICAL', 'pickup to tools': 'TO TOOLS', 'approach tools': 'TO TOOLS', 'park at tools': 'PARK TOOLS', 'leave tools': 'GOING HOME'}   # 16-character OLED text per step
 
 
 def step(name, fn, needs, motion=False, tries=4, oled=None):
@@ -1376,13 +1389,43 @@ ELEC_PAST_ROW = 0.50     # from the tools / dock line on toward the electrical w
 ELEC_ACROSS = 0.68       # then across to in front of the electrical tags (lane x -1.02 -> tags x -1.70)
 
 
-def to_lane():
-    """From parked at the pickup: straight back out to the lane, turn left (toward tools / electrical / dock)
-    and drive along it to the tools / dock line. Ends facing the electrical side wall."""
+# ---- direct routes on the anchored map pose (25 Nov, 3-4x faster): one turn and one drive per leg instead of
+# the lane's L-shapes. Waypoints keep the robot's edge >= 0.14 m clear of the box fronts (mechanical and tools
+# boxes stand ~0.4 m out from the station wall, x -1.75). The approach at each station still aims at the tags.
+PICKUP_Y = 2.29
+W_PICKUP = (-1.05, PICKUP_Y)      # in front of the pickup, ~1.1 m from its tags
+W_MECH = (-1.10, 1.20)            # in front of the mechanical box
+W_TOOLS = (-1.10, 0.00)           # in front of the tools box
+W_ELEC = (-1.30, -0.30)           # toward electrical, its tags ahead; x -1.30 passes the tools box 0.25 m clear
+W_DOCK = (-0.75, 0.00)            # in front of the dock, its tags in view
+
+
+def go_to(point, name):
+    """Turn toward a map point and drive there at travel speed (heading held, slows for the front sensor)."""
+    p = map_pose()
+    if p is None:
+        raise Abort('no map pose for the way to %s' % name)
+    dx, dy = point[0] - p[0], point[1] - p[1]
+    dist = math.hypot(dx, dy)
+    if dist < 0.08:
+        return
+    bearing = math.atan2(dy, dx)
+    log('to %s (%.2f, %.2f) from (%.2f, %.2f): turn %+.0f deg, drive %.2f m' % (
+        name, point[0], point[1], p[0], p[1], math.degrees(wrap(bearing - p[2])), dist))
+    turn(math.degrees(wrap(bearing - p[2])), limit=20.0)
+    drive(dist, stop_front=0.35, limit=30.0, fast=True)
+
+
+def face(heading):
+    p = map_pose()
+    if p is not None:
+        turn(math.degrees(wrap(heading - p[2])), limit=20.0)
+
+
+def back_to(front, tag):
+    """Straight back until the front ultrasonic would read `front` (at least 0.25 m)."""
     r = st['range']
-    once('lane.back', lambda: drive(-(LANE_FRONT - r) if r is not None and r < LANE_FRONT else -0.60, fast=True))
-    once('lane.left', lambda: turn(90.0))
-    once('lane.along', lambda: drive(PICKUP_ALONG, stop_front=0.70, limit=40.0, fast=True))
+    once(tag, lambda: drive(-max(0.25, front - r) if r is not None and r < front else -0.40, fast=True))
 
 
 def mission(test_station=None):
@@ -1395,12 +1438,11 @@ def mission(test_station=None):
         step('wait for the wake word', wake, ('mega', 'cams', 'mic', 'speaker'), oled='SAY NONTOK')
     say('answer')
     LIVE.update(item='', station='')
-    plan('dock -> pickup', [(0.0, 0.0), (-0.48, 0.0), (-0.48, 2.29), (-1.81, 2.29)])
-    # dock -> pickup: off the dock wall, left, along the room past mechanical, left to face the pickup
-    step('leave the dock', lambda: (leave_wall('dock.', 0.70, 1),
-                                    once('dock.along', lambda: drive(PICKUP_ALONG, stop_front=0.35, limit=40.0, fast=True)),
-                                    once('dock.left', lambda: turn(90.0))), ('mega',), motion=True)
-    step('approach the pickup', lambda: approach('pickup.', (2, 3)), ('mega', 'cams'), motion=True)
+    plan('dock -> pickup', [(0.0, 0.0), (-0.48, 0.0), W_PICKUP, (-1.81, PICKUP_Y)])
+    step('leave the dock', lambda: (back_to(0.70, 'dock.back'),
+                                    once('dock.go', lambda: go_to(W_PICKUP, 'the pickup')),
+                                    once('dock.face', lambda: face(math.pi))), ('mega',), motion=True)
+    step('approach the pickup', lambda: ensure_far((2, 3)), ('mega', 'cams'), motion=True)
     step('park at the pickup', lambda: dock_centred('pickup', (2, 3), guard=0.12, contact=0.213),
          ('mega', 'cams'), motion=True)
     if test_station:
@@ -1412,23 +1454,17 @@ def mission(test_station=None):
     station = answer.get('station')
     LIVE.update(item=answer.get('item') or '', station=station or '')
     if station == 'mechanical':
-        plan('pickup -> mechanical', [(-1.81, 2.29), (-1.51, 2.29), (-1.51, 1.2), (-1.60, 1.2)])
-        # the old pickup -> mechanical route, mirrored: mechanical is now to the LEFT of the pickup
-        step('pickup to mechanical', lambda: (
-            once('mech.back', lambda: drive(-0.30)),
-            once('mech.left', lambda: turn(90.0)),
-            once('mech.along', lambda: drive(PICKUP_TO_MECH, stop_front=0.35, fast=True)),
-            once('mech.right', lambda: turn(-90.0))), ('mega',), motion=True)
+        plan('pickup -> mechanical', [(-1.80, PICKUP_Y), (-1.27, PICKUP_Y), W_MECH, (-1.60, 1.2)])
+        step('pickup to mechanical', lambda: (back_to(0.75, 'mech.back'),
+                                              once('mech.go', lambda: go_to(W_MECH, 'mechanical')),
+                                              once('mech.face', lambda: face(math.pi))), ('mega',), motion=True)
         mechanical_tail()
         return
     if station == 'electrical':
-        plan('pickup -> electrical', [(-1.81, 2.29), (-1.02, 2.29), (-1.02, 0.0), (-1.02, -0.47), (-1.70, -0.47),
-                                      (-1.70, -0.82)])
-        step('pickup to electrical', lambda: (to_lane(),
-             once('elec.on', lambda: drive(ELEC_PAST_ROW, stop_front=0.60, fast=True)),
-             once('elec.right', lambda: turn(-90.0)),
-             once('elec.across', lambda: drive(ELEC_ACROSS, stop_front=0.35, fast=True)),
-             once('elec.left', lambda: turn(90.0))), ('mega',), motion=True)
+        plan('pickup -> electrical', [(-1.80, PICKUP_Y), (-1.27, PICKUP_Y), W_ELEC, (-1.70, -0.82)])
+        step('pickup to electrical', lambda: (back_to(0.75, 'elec.back'),
+                                              once('elec.go', lambda: go_to(W_ELEC, 'electrical')),
+                                              once('elec.face', lambda: face(-math.pi / 2))), ('mega',), motion=True)
         step('approach electrical', lambda: ensure_far((10, 11)), ('mega', 'cams'), motion=True)
         # no lip check here: the electrical box is low, the 45 deg sensors never see it (25 Nov: refused 4x);
         # front 0.225 m is the field-tested dump spot (24 Nov, robot pressing the box, dump landed)
@@ -1436,28 +1472,32 @@ def mission(test_station=None):
              ('mega', 'cams'), motion=True)
         step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
         say('going_home')
-        plan('electrical -> dock', [(-1.70, -0.82), (-1.70, -0.42), (0.0, 0.0)])
-        # back only 0.40 m: the old 0.90 m would now back into the tools box
-        step('leave electrical', lambda: (once('elec.back', lambda: drive(-0.40, fast=True)),
-                                          once('elec.turn', lambda: turn(90.0))), ('mega',), motion=True)
-        home_dist = 1.00
+        plan('electrical -> dock', [(-1.70, -0.84), (-1.70, -0.59), W_DOCK, (0.0, 0.0)])
+        # back only 0.25 m: backing away from electrical moves toward the tools box corner
+        step('leave electrical', lambda: (once('ehome.back', lambda: drive(-0.25, fast=True)),
+                                          once('ehome.go', lambda: go_to(W_DOCK, 'the dock')),
+                                          once('ehome.face', lambda: face(0.0))), ('mega',), motion=True)
     elif station == 'tools':
-        plan('pickup -> tools', [(-1.81, 2.29), (-1.02, 2.29), (-1.02, 0.0), (-1.60, 0.0)])
-        step('pickup to tools', lambda: (to_lane(), once('tools.right', lambda: turn(-90.0))), ('mega',), motion=True)
+        plan('pickup -> tools', [(-1.80, PICKUP_Y), (-1.27, PICKUP_Y), W_TOOLS, (-1.60, 0.0)])
+        step('pickup to tools', lambda: (back_to(0.75, 'tools.back'),
+                                         once('tools.go', lambda: go_to(W_TOOLS, 'tools')),
+                                         once('tools.face', lambda: face(math.pi))), ('mega',), motion=True)
         step('approach tools', lambda: ensure_far((16, 17)), ('mega', 'cams'), motion=True)
         step('park at tools', lambda: park_box('tools', (16, 17)), ('mega', 'cams'), motion=True)
         step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
         say('going_home')
-        plan('tools -> dock', [(-1.60, 0.0), (-0.92, 0.0), (0.0, 0.0)])
-        step('leave tools', lambda: leave_wall('tools.', 0.70, 2), ('mega',), motion=True)
-        home_dist = 0.90
+        plan('tools -> dock', [(-1.60, 0.0), W_DOCK, (0.0, 0.0)])
+        step('leave tools', lambda: (back_to(0.70, 'thome.back'),
+                                     once('thome.go', lambda: go_to(W_DOCK, 'the dock')),
+                                     once('thome.face', lambda: face(0.0))), ('mega',), motion=True)
     else:
         log('item %r -> %r: no driven route there yet, taking it home' % (answer.get('item'), station))
         say('going_home')
-        plan('pickup -> dock', [(-1.81, 2.29), (-1.02, 2.29), (-1.02, 0.0), (0.0, 0.0)])
-        step('leave the pickup', lambda: (to_lane(), once('pick.left', lambda: turn(90.0))), ('mega',), motion=True)
-        home_dist = 0.60
-    step('approach the dock', lambda: approach('home.', (0, 1), home_dist), ('mega', 'cams'), motion=True)
+        plan('pickup -> dock', [(-1.80, PICKUP_Y), (-1.27, PICKUP_Y), W_DOCK, (0.0, 0.0)])
+        step('leave the pickup', lambda: (back_to(0.75, 'phome.back'),
+                                          once('phome.go', lambda: go_to(W_DOCK, 'the dock')),
+                                          once('phome.face', lambda: face(0.0))), ('mega',), motion=True)
+    step('approach the dock', lambda: ensure_far((0, 1)), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
     say('docked')
 
@@ -1502,16 +1542,11 @@ def mechanical_tail():
     step('park at mechanical', park_mechanical, ('mega', 'cams'), motion=True)
     step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
     say('going_home')
-    plan('mechanical -> dock', [(-1.60, 1.2), (-1.02, 1.2), (-1.02, 0.0), (0.0, 0.0)])
-    r0 = st['range']
-    # out to the lane (not 0.51 m as on 24 Nov: the robot would now graze the tools box), left, along to the
-    # tools / dock line, left again to face the dock
-    step('mechanical to the dock line', lambda: (
-        once('mhome.back', lambda: drive(-(LANE_FRONT - r0) if r0 is not None and r0 < LANE_FRONT else -0.60, fast=True)),
-        once('mhome.left1', lambda: turn(90.0)),
-        once('mhome.along', lambda: drive(MECH_TO_ROW, stop_front=0.70, fast=True)),
-        once('mhome.left2', lambda: turn(90.0))), ('mega',), motion=True)
-    step('approach the dock', lambda: approach('home.', (0, 1), 0.60), ('mega', 'cams'), motion=True)
+    plan('mechanical -> dock', [(-1.60, 1.2), (-1.20, 1.2), W_DOCK, (0.0, 0.0)])
+    step('mechanical to the dock', lambda: (back_to(0.60, 'mhome.back'),
+                                            once('mhome.go', lambda: go_to(W_DOCK, 'the dock')),
+                                            once('mhome.face', lambda: face(0.0))), ('mega',), motion=True)
+    step('approach the dock', lambda: ensure_far((0, 1)), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
     say('docked')
     show('DOCKED')
