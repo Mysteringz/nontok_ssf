@@ -1,13 +1,14 @@
 # Which station each item type goes to (PLAN.md section 7.4).
-# Demo items fixed 2026-11-21. The names must match the class folder names used for training
-# (training/video: videos/<session>/<item>.mkv). "empty" needs no entry.
+# Demo items changed 2026-11-25 (5 items, 3 stations). The names must match the class folder names
+# used for training (training/video: videos/<session>/<item>.mkv). "empty" needs no entry.
+# The model also has a class "_other" (LED, resistor, bolt photos): names starting with "_" are
+# not items, so anything that looks like them is reported as unknown, not sent to a station.
 items:
-  led: electrical
-  resistor: electrical
-  bolt: mechanical
-  multimeter: tools        # 25 Nov: tools station (was electrical on 24 Nov)
-  scissor: tools           # 25 Nov: tools station. 24 Nov trained model (items.onnx): class names must match the model
-  screwdrivers: tools      # 25 Nov: tools station
+  multimeter: tools
+  scissor: tools
+  screwdrivers: tools
+  ultrasonic: electrical     # HC-SR04 ultrasonic sensor
+  motor: mechanical          # small blue servo motor (SG90 type) with its lead
 # Anything else (or a low-confidence answer) is "unknown": the mission takes it to the
 # "unknown" station (mission.yaml unknown_station) for a person to sort by hand.
 
@@ -15,12 +16,11 @@ items:
 # What each item looks like, in plain words. Several phrases per item are averaged. After
 # editing, run training/build_item_prompts.py on a PC and copy items_clip.npz to the robot.
 descriptions:
-  led: [an LED, a small light-emitting diode with two wire legs, a 5 mm LED with a coloured plastic dome]
-  resistor: [a resistor, a small electronic resistor with coloured bands and two wire legs]
-  bolt: [a bolt, a metal bolt, a metal screw]
   multimeter: [a multimeter, a handheld digital multimeter with test leads, a red digital multimeter]
   scissor: [a pair of scissors, scissors with green handles, metal scissors]
   screwdrivers: [a screwdriver, a pink and yellow screwdriver, a small screwdriver with a coloured handle]
+  ultrasonic: [an ultrasonic distance sensor, an HC-SR04 sensor with two silver cylinders, a blue circuit board with two round sensors]
+  motor: [a small blue servo motor, a micro servo with an orange and brown cable, a small motor with a wire]
 # Things the camera may see that are not items. A picture that fits one of these best is
 # reported as "unknown".
 not_items:
