@@ -1169,11 +1169,9 @@ def docked():
     taken the pickup for the dock after a run stopped there."""
     time.sleep(1.2)
     r = st['range']
-    if r is None:
-        return False
-    if r <= 0.65 and tags_seen((0, 1)):
-        return True
-    return r <= 0.30 and WHERE['at'] in (None, 'dock') and not tags_seen(OTHER_TAGS)
+    if r is None or r > 0.30:   # 25 Nov: "dock tags in view within 0.65 m" let a robot stopped 0.64 m out count
+        return False            # as docked; parked it reads 0.16-0.24 m
+    return tags_seen((0, 1)) or (WHERE['at'] in (None, 'dock') and not tags_seen(OTHER_TAGS))
 
 
 def spin_search(ids, step_deg=30):
