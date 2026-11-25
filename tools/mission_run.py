@@ -343,11 +343,38 @@ def tags_seen(ids):
     return {c: v for c, (t, v) in st['tags'].items() if now - t < 1.0 and any(i in v for i in ids)}
 
 
+def face_tags(ids):
+    """If the map pose (odometry/global) is fresh and the tags are well off to one side, turn to face them.
+    25 Nov: a strafe had turned the robot 143 deg and the +-40 deg search kept looking at the wrong wall,
+    although the localization knew exactly where the robot was."""
+    import yaml
+    g = st.get('gpose')
+    if g is None or time.time() - st.get('gpose_t', 0) > 1.0:
+        return
+    try:
+        tags = yaml.safe_load(open(TAGS_FILE))['tags']
+        cx = sum(tags[i]['x'] for i in ids) / len(ids)
+        cy = sum(tags[i]['y'] for i in ids) / len(ids)
+    except (OSError, KeyError, TypeError, ValueError):
+        return
+    off = wrap(math.atan2(cy - g[1], cx - g[0]) - g[2])
+    if abs(off) > math.radians(30):
+        log('tags %s are %+.0f deg off to the side by the map pose (%.2f, %.2f, %+.0f deg): turning to face them' % (
+            ids, math.degrees(off), g[0], g[1], math.degrees(g[2])))
+        turn(math.degrees(off), limit=20.0)
+
+
 def find_tags(ids, max_deg=40, step=10):
-    """Tags in view now, else turn in steps (+10, -20, +30 ...) up to +-max_deg around here."""
+    """Tags in view now, else face them by the map pose, else turn in steps (+10, -20, +30 ...) up to
+    +-max_deg around here."""
     time.sleep(0.6)
     if tags_seen(ids):
         log('tags %s in view: %s' % (ids, tags_seen(ids)))
+        return
+    face_tags(ids)
+    time.sleep(0.6)
+    if tags_seen(ids):
+        log('tags %s in view after facing them: %s' % (ids, tags_seen(ids)))
         return
     offset = 0
     for k in range(1, 2 * max_deg // step + 1):
@@ -451,6 +478,7 @@ def fresh_corners():
     return {cam: cs for cam, (t, cs) in st['c'].items() if now - t < 0.8}
 
 
+STRAFE_MAX_SLIP_DEG = 8.0             # heading change mid-strafe that stops it to turn back
 STRAFE_MIN, STRAFE_MAX = 0.07, 0.14   # m/s: 0.04 left the omni wheels standing still sideways (24 Nov)
 
 
@@ -464,10 +492,25 @@ def strafe(dist, limit=15.0):
     end = time.time() + limit
     boost = 0.0
     last_t, last_done = time.time(), 0.0
+    fixes = 0
     while True:
         done = math.hypot(st['x'] - x0, st['y'] - y0)
         if done >= abs(dist) - 0.005:
             break
+        slip = wrap(st['yaw'] - yaw0)
+        if abs(slip) > math.radians(STRAFE_MAX_SLIP_DEG):
+            # 25 Nov: with the wheels slipping at the boosted speed the hold lost and a 0.27 m crab turned the
+            # robot 143 deg - then every tag search looked the wrong way. Stop, turn back, carry on.
+            stop()
+            fixes += 1
+            log('strafe: heading slipped %+.0f deg - turning back (%d)' % (math.degrees(slip), fixes))
+            turn(-math.degrees(slip), limit=20.0)
+            if fixes >= 3:
+                log('strafe: keeps turning - giving up after %.3f of %.3f m' % (done, abs(dist)))
+                break
+            boost = 0.0
+            last_t, last_done = time.time(), math.hypot(st['x'] - x0, st['y'] - y0)
+            continue
         if time.time() - last_t > 1.5:
             if done - last_done < 0.01:
                 if STRAFE_MIN + boost >= STRAFE_MAX:
@@ -486,6 +529,8 @@ def strafe(dist, limit=15.0):
     stop()
     log('strafed %+.3f m (encoders), heading change %+.1f deg' % (
         sign * math.hypot(st['x'] - x0, st['y'] - y0), math.degrees(wrap(st['yaw'] - yaw0))))
+    if abs(wrap(st['yaw'] - yaw0)) > math.radians(3.0):
+        turn(-math.degrees(wrap(st['yaw'] - yaw0)), limit=20.0)
 
 
 def push_in(dist, limit=8.0):
