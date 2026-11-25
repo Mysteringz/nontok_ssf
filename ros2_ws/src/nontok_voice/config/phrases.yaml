@@ -18,3 +18,7 @@ phrases:
 # How an item is said. Items not listed are read from their name with "a" in front.
 spoken_items:
   led: an LED
+  ultrasonic: an ultrasonic sensor
+  motor: a servo motor
+  scissor: a pair of scissors
+  screwdrivers: a screwdriver

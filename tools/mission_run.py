@@ -263,7 +263,7 @@ TRAVEL_ACCEL = 0.25    # m/s per s: ramp up, so the omni wheels do not slip and 
 def drive(dist, stop_front=None, limit=20.0, fast=False):
     """Straight on the encoders. fast: TRAVEL_SPEED with a ramp up, slowing for the end of the move and for
     anything the front ultrasonic sees (never faster than 0.8/s x the room left before stop_front or 0.15 m)."""
-    x0, y0 = st['x'], st['y']
+    x0, y0, yaw0 = st['x'], st['y'], st['yaw']
     sign = 1 if dist > 0 else -1
     top = TRAVEL_SPEED if fast else PARK_SPEED
     t0 = time.time()
@@ -287,7 +287,8 @@ def drive(dist, stop_front=None, limit=20.0, fast=False):
             v = min(v, PARK_SPEED + TRAVEL_ACCEL * (time.time() - t0))
             if sign > 0 and r is not None and r < NO_ECHO:
                 v = min(v, 0.8 * (r - (stop_front if stop_front is not None else 0.15)))
-        send(vx=sign * max(0.04, v))
+        # hold the heading: 25 Nov a 2.2 m leg at travel speed ended 13 deg off and 0.4 m to the side
+        send(vx=sign * max(0.04, v), wz=max(-0.3, min(0.3, -2.0 * wrap(st['yaw'] - yaw0))))
         time.sleep(0.05)
     stop()
     log('drove %+.3f m (encoders), front %.3f m' % (sign * math.hypot(st['x'] - x0, st['y'] - y0), st['range'] or -1))
@@ -479,6 +480,7 @@ def fresh_corners():
     return {cam: cs for cam, (t, cs) in st['c'].items() if now - t < 0.8}
 
 
+STRAFE_GAIN = 0.6                     # fraction of the sideways error a centring strafe asks for
 STRAFE_MAX_SLIP_DEG = 8.0             # heading change mid-strafe that stops it to turn back
 STRAFE_MIN, STRAFE_MAX = 0.07, 0.14   # m/s: 0.04 left the omni wheels standing still sideways (24 Nov)
 
@@ -702,7 +704,8 @@ def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.025):
             turn(max(-35.0, min(35.0, skew)))
             continue
         if abs(my) > side_tol:
-            strafe(max(-0.40, min(0.40, my)))
+            # 25 Nov: a strafe moved ~1.6x what was asked (-8 cm -> +5 cm -> -4 cm, three tries): ask for 60 %
+            strafe(max(-0.40, min(0.40, STRAFE_GAIN * my)))
             continue
         return
     log('square: best effort after %d tries' % tries)
@@ -717,10 +720,15 @@ def visual_park(ids, contact):
     if r is not None and r > 0.47:
         drive(min(0.30, r - 0.45), stop_front=0.45)
         square_and_center(ids, tries=2)
-    r = st['range'] or 0.3
-    if r > contact + 0.005:
+    for _ in range(3):    # 25 Nov: one pass stopped 1-3 cm short of the contact distance
+        r = st['range'] or 0.3
+        if r <= contact + 0.015:
+            break
         drive(min(0.30, r - contact), stop_front=contact)
     log('parked by eye: front %.3f m' % (st['range'] or -1))
+
+
+USE_DOCK_SERVER = False   # 25 Nov: it reported 'station tags not seen' at every station; the visual park did the work
 
 
 def dock_centred(station, ids, guard, contact):
@@ -735,6 +743,9 @@ def dock_centred_inner(station, ids, guard, contact):
     if r is not None and r < 0.45:   # a retry from close in: back out to where both tags are in view
         drive(-(0.55 - r))
     square_and_center(ids)
+    if not USE_DOCK_SERVER:
+        visual_park(ids, contact)
+        return
     try:
         dock_at(station, guard)
     except Abort as e:
@@ -1161,7 +1172,8 @@ def ensure_far(ids):
             square_and_center(ids)
     r = st['range']
     if r is not None and 0.65 < r < ULTRA_TRUST_M:
-        creep_to(0.60, max_dist=0.80, limit=30.0)   # stops on the 0.60 m reading; 0.50 was hit on 24 Nov
+        # stops on the 0.60 m reading (0.50 was hit on 24 Nov); travel speed, slowing for the reading
+        drive(min(0.80, r - 0.60), stop_front=0.60, limit=20.0, fast=True)
 
 
 def get_item():
@@ -1195,6 +1207,7 @@ def get_item():
         say('reposition')
         time.sleep(4.0)
     answer.update(item='unknown', station='')
+    say('item_UNKNOWN_ITEM')   # 25 Nov: it gave up on an item without a word
 
 
 def dump():
@@ -1319,10 +1332,11 @@ def go_home():
 # (2, 3) ~1 m right of mechanical. Electrical (10, 11) is on the left side wall. Routes between stations run
 # along a lane ~1 m out from the station wall, clear of the boxes standing out from it.
 LANE_FRONT = 1.00        # front reading (to the station wall) that puts the robot on the lane
-PICKUP_ALONG = 2.20      # dock / tools line -> pickup, along the station wall           TODO measure
-PICKUP_TO_MECH = 1.00    # pickup -> mechanical, along the station wall                  TODO measure
+PICKUP_ALONG = 2.29      # dock / tools line -> pickup (25 Nov: 2.205 m left the pair 8 cm further on)
+PICKUP_TO_MECH = 1.09    # pickup -> mechanical (pickup y 2.29 - mechanical y 1.20)
 MECH_TO_ROW = 1.20       # mechanical -> the tools / dock line (tag spacing in tags.yaml)
-ELEC_PAST_ROW = 0.40     # from the tools / dock line on toward the electrical wall
+ELEC_PAST_ROW = 0.50     # from the tools / dock line on toward the electrical wall (front then reads ~0.6 m)
+ELEC_ACROSS = 0.68       # then across to in front of the electrical tags (lane x -1.02 -> tags x -1.70)
 
 
 def to_lane():
@@ -1344,7 +1358,7 @@ def mission(test_station=None):
         step('wait for the wake word', wake, ('mega', 'cams', 'mic', 'speaker'), oled='SAY NONTOK')
     say('answer')
     LIVE.update(item='', station='')
-    plan('dock -> pickup', [(0.0, 0.0), (-0.48, 0.0), (-0.48, 2.2), (-1.81, 2.2)])
+    plan('dock -> pickup', [(0.0, 0.0), (-0.48, 0.0), (-0.48, 2.29), (-1.81, 2.29)])
     # dock -> pickup: off the dock wall, left, along the room past mechanical, left to face the pickup
     step('leave the dock', lambda: (leave_wall('dock.', 0.70, 1),
                                     once('dock.along', lambda: drive(PICKUP_ALONG, stop_front=0.35, limit=40.0, fast=True)),
@@ -1361,7 +1375,7 @@ def mission(test_station=None):
     station = answer.get('station')
     LIVE.update(item=answer.get('item') or '', station=station or '')
     if station == 'mechanical':
-        plan('pickup -> mechanical', [(-1.81, 2.2), (-1.51, 2.2), (-1.51, 1.2), (-1.60, 1.2)])
+        plan('pickup -> mechanical', [(-1.81, 2.29), (-1.51, 2.29), (-1.51, 1.2), (-1.60, 1.2)])
         # the old pickup -> mechanical route, mirrored: mechanical is now to the LEFT of the pickup
         step('pickup to mechanical', lambda: (
             once('mech.back', lambda: drive(-0.30)),
@@ -1371,13 +1385,17 @@ def mission(test_station=None):
         mechanical_tail()
         return
     if station == 'electrical':
-        plan('pickup -> electrical', [(-1.81, 2.2), (-1.02, 2.2), (-1.02, 0.0), (-1.02, -0.37), (-1.70, -0.37),
+        plan('pickup -> electrical', [(-1.81, 2.29), (-1.02, 2.29), (-1.02, 0.0), (-1.02, -0.47), (-1.70, -0.47),
                                       (-1.70, -0.82)])
         step('pickup to electrical', lambda: (to_lane(),
-             once('elec.on', lambda: drive(ELEC_PAST_ROW, stop_front=0.70, fast=True))), ('mega',), motion=True)
+             once('elec.on', lambda: drive(ELEC_PAST_ROW, stop_front=0.60, fast=True)),
+             once('elec.right', lambda: turn(-90.0)),
+             once('elec.across', lambda: drive(ELEC_ACROSS, stop_front=0.35, fast=True)),
+             once('elec.left', lambda: turn(90.0))), ('mega',), motion=True)
         step('approach electrical', lambda: ensure_far((10, 11)), ('mega', 'cams'), motion=True)
-        step('park at electrical', lambda: (dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
-                                            confirm_at_box('electrical')),
+        # no lip check here: the electrical box is low, the 45 deg sensors never see it (25 Nov: refused 4x);
+        # front 0.225 m is the field-tested dump spot (24 Nov, robot pressing the box, dump landed)
+        step('park at electrical', lambda: dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
              ('mega', 'cams'), motion=True)
         step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
         say('going_home')
@@ -1387,7 +1405,7 @@ def mission(test_station=None):
                                           once('elec.turn', lambda: turn(90.0))), ('mega',), motion=True)
         home_dist = 1.00
     elif station == 'tools':
-        plan('pickup -> tools', [(-1.81, 2.2), (-1.02, 2.2), (-1.02, 0.0), (-1.60, 0.0)])
+        plan('pickup -> tools', [(-1.81, 2.29), (-1.02, 2.29), (-1.02, 0.0), (-1.60, 0.0)])
         step('pickup to tools', lambda: (to_lane(), once('tools.right', lambda: turn(-90.0))), ('mega',), motion=True)
         step('approach tools', lambda: ensure_far((16, 17)), ('mega', 'cams'), motion=True)
         step('park at tools', lambda: park_box('tools', (16, 17)), ('mega', 'cams'), motion=True)
@@ -1399,7 +1417,7 @@ def mission(test_station=None):
     else:
         log('item %r -> %r: no driven route there yet, taking it home' % (answer.get('item'), station))
         say('going_home')
-        plan('pickup -> dock', [(-1.81, 2.2), (-1.02, 2.2), (-1.02, 0.0), (0.0, 0.0)])
+        plan('pickup -> dock', [(-1.81, 2.29), (-1.02, 2.29), (-1.02, 0.0), (0.0, 0.0)])
         step('leave the pickup', lambda: (to_lane(), once('pick.left', lambda: turn(90.0))), ('mega',), motion=True)
         home_dist = 0.60
     step('approach the dock', lambda: approach('home.', (0, 1), home_dist), ('mega', 'cams'), motion=True)
