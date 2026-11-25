@@ -36,6 +36,7 @@ SPEAKER = 'plughw:CARD=Audio,DEV=0'
 BEEP = '/tmp/parking_beep.wav'
 BEEP_WHILE_MOVING = False   # 24 Nov: the speaker shares the USB hub with the cameras; they dropped out while it beeped
 NO_ECHO = 1.45          # the front ultrasonic reports 1.5 m for "nothing in range"
+ULTRA_TRUST_M = 1.20    # the front ultrasonic is trusted nearer than this (it flickers at 1.4-1.5 m)
 # 25 Nov: the front ultrasonic alone can take the near edge of a box for its back wall and stop the robot short,
 # so the tray dumps in front of the box. The two 45 deg ultrasonics sit low and see the box lip only when the
 # robot is right at the box. Before a dump the working ones must read close, or the wheels must stall against
@@ -1100,13 +1101,18 @@ def ensure_far(ids):
         find_tags(ids, max_deg=60)
     square_and_center(ids)
     r = st['range']
-    if r is None or r >= NO_ECHO:   # beyond the ultrasonic: close in on the camera distance to the tags
+    # 25 Nov: at 1.4-1.5 m the front ultrasonic flickers between an echo (1.449) and none (1.46): taken as an
+    # echo it sent the robot to creep_to, which then saw "nothing ahead" and aborted, try after try. Beyond
+    # ULTRA_TRUST_M close in on the camera distance; creep on the ultrasonic only nearer than that.
+    if r is None or r >= ULTRA_TRUST_M:
         g = measure(ids)
         if g is not None and g[1] > 0.95:
-            log('far: tags %.2f m ahead, ultrasonic sees nothing - driving in on the camera distance' % g[1])
+            log('far: tags %.2f m ahead, ultrasonic %s - driving in on the camera distance' % (
+                g[1], 'sees nothing' if r is None or r >= NO_ECHO else '%.2f m (beyond its reliable range)' % r))
             drive(min(1.60, g[1] - 0.85), stop_front=0.60, limit=30.0, fast=True)
             square_and_center(ids)
-    if st['range'] is not None and 0.65 < st['range'] < NO_ECHO:
+    r = st['range']
+    if r is not None and 0.65 < r < ULTRA_TRUST_M:
         creep_to(0.60, max_dist=0.80, limit=30.0)   # stops on the 0.60 m reading; 0.50 was hit on 24 Nov
 
 
