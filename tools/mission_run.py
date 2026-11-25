@@ -114,14 +114,30 @@ def show(text):
     st['oled'] = text[:16]
 
 
-def say(name):
+SPEAKING = {'thread': None}
+
+
+def say(name, wait=True):
+    """Play a phrase. wait=False plays it in the background (only while the robot stands still: the speaker
+    shares the USB hub with the cameras); the next phrase waits for it."""
     path = SOUNDS + name + '.wav'
-    if os.path.exists(path):
-        log('SAY %s' % name)
+    if not os.path.exists(path):
+        return
+    if SPEAKING['thread'] is not None:
+        SPEAKING['thread'].join(timeout=15)
+    log('SAY %s' % name)
+
+    def play():
         try:
             subprocess.run(['aplay', '-q', '-D', SPEAKER, path], timeout=15)
         except Exception as e:   # a missing speaker must never stop the run
             log('  (speaker: %s)' % e)
+    if wait:
+        SPEAKING['thread'] = None
+        play()
+    else:
+        SPEAKING['thread'] = threading.Thread(target=play, daemon=True)
+        SPEAKING['thread'].start()
 
 
 class Beeper:
@@ -259,6 +275,7 @@ PARK_SPEED = 0.12      # m/s: parking and short moves (was 0.08)
 TRAVEL_SPEED = 0.40    # m/s: legs between stations - the firmware's wheel limit (MAX_WHEEL_MM_S 400)
 TRAVEL_ACCEL = 0.30    # m/s per s: ramp up, the firmware's ACCEL_MM_S2; faster slips the omni wheels
 DECEL = 0.25           # m/s per s: speed is held to sqrt(2 DECEL x room left), so it stops where asked
+PARK_DECEL = 0.10      # gentler for parking: at 0.25 the 0.12 m/s park rolled ~4 cm past the contact
 TURN_RATE = 1.2        # rad/s (firmware allows ~2: 400 mm/s / 0.1925 m)
 TURN_DECEL = 1.0       # rad/s per s, the same idea for turns
 
@@ -285,11 +302,12 @@ def drive(dist, stop_front=None, limit=20.0, fast=False):
         if time.time() > end:
             stop()
             raise Abort('drive: only %.2f of %.2f m in %.0f s' % (done, abs(dist), limit))
-        v = min(top, math.sqrt(2 * DECEL * max(0.0, abs(dist) - done)))
+        decel = DECEL if fast else PARK_DECEL
+        v = min(top, math.sqrt(2 * decel * max(0.0, abs(dist) - done)))
         v = min(v, 0.06 + TRAVEL_ACCEL * (time.time() - t0))
         if sign > 0 and r is not None and r < NO_ECHO:   # slow for what the front sees: stop before it
             room = r - (stop_front if stop_front is not None else 0.15) - 0.02
-            v = min(v, math.sqrt(2 * DECEL * max(0.0, room)))
+            v = min(v, math.sqrt(2 * decel * max(0.0, room)))
         # hold the heading: 25 Nov a 2.2 m leg at travel speed ended 13 deg off and 0.4 m to the side
         send(vx=sign * max(0.04, v), wz=max(-0.3, min(0.3, -2.0 * wrap(st['yaw'] - yaw0))))
         time.sleep(0.05)
@@ -540,7 +558,7 @@ def strafe(dist, limit=15.0):
         turn(-math.degrees(wrap(st['yaw'] - yaw0)), limit=20.0)
 
 
-def push_in(dist, limit=8.0):
+def push_in(dist, limit=12.0):
     """Forward on the encoders only, ignoring the front sensor (it reads the box itself), slowly, until `dist`
     or the wheels stall against the box (< 5 mm in 1 s). 24 Nov: the mechanical drop landed ~20 cm short."""
     x0, y0 = st['x'], st['y']
@@ -557,7 +575,8 @@ def push_in(dist, limit=8.0):
             last_t, last_done = time.time(), done
         if time.time() > end:
             break
-        send(vx=0.05)
+        # 25 Nov: 0.6 m at 0.05 m/s took 12 s - park speed to 10 cm short of the box, then slowly into it
+        send(vx=PARK_SPEED if done < dist - 0.10 else 0.05)
         time.sleep(0.05)
     stop()
     log('pushed in %.3f m (encoders), front %.3f m' % (math.hypot(st['x'] - x0, st['y'] - y0), st['range'] or -1))
@@ -696,7 +715,7 @@ def measure(ids, secs=0.4):
     return g
 
 
-def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.04):
+def square_and_center(ids, tries=3, skew_tol=4.0, side_tol=0.04):
     """Square to the wall (one turn), then crab until the pair's middle is straight ahead (one slide).
     Acts only beyond 3 deg / 4 cm so it does not chase noise: 25 Nov, 2-3 cm strafes twisted the robot
     3.5-5 deg, which then cost a turn and another measurement, 3-4 times per station."""
@@ -724,10 +743,10 @@ def visual_park(ids, contact):
     """No pose solve: square and centre, in to 0.45 m, one more check, then straight in on the encoders to the
     contact distance (closer than ~0.4 m a tag leaves a camera's view, so no centring there)."""
     log('visual park on %s to front %.3f m' % (ids, contact))
-    square_and_center(ids, tries=2)
+    square_and_center(ids, tries=1)
     r = st['range']
-    if r is not None and r > 0.47:
-        drive(min(0.30, r - 0.45), stop_front=0.45)
+    if r is None or r > 0.47:    # no 0.30 m cap any more: one drive, slowing for the 0.45 m reading
+        drive(min(1.20, (r if r is not None and r < NO_ECHO else 1.0) - 0.45), stop_front=0.45, fast=True)
         square_and_center(ids, tries=2)
     for _ in range(3):    # 25 Nov: one pass stopped 1-3 cm short of the contact distance
         r = st['range'] or 0.3
@@ -1104,7 +1123,7 @@ def arm_if(on):
 LABELS = {'home: back off': 'FIND DOCK', 'home: find the dock': 'FIND DOCK', 'home: approach the dock': 'FIND DOCK', 'home: park at the dock': 'DOCKING', 'leave the dock': 'TO PICKUP', 'approach the pickup': 'TO PICKUP', 'park at the pickup': 'PARK PICKUP', 'leave the pickup': 'LEAVE PICKUP', 'approach electrical': 'TO ELECTRICAL', 'park at electrical': 'PARK ELECTRICAL', 'leave electrical': 'GOING HOME', 'pickup to mechanical': 'TO MECHANICAL', 'approach the dock': 'GOING HOME', 'park at the dock': 'DOCKING', 'approach mechanical': 'TO MECHANICAL', 'park at mechanical': 'PARK MECHANICAL', 'mechanical to the dock': 'GOING HOME', 'pickup to electrical': 'TO ELECTRICAL', 'pickup to tools': 'TO TOOLS', 'approach tools': 'TO TOOLS', 'park at tools': 'PARK TOOLS', 'leave tools': 'GOING HOME'}   # 16-character OLED text per step
 
 
-def step(name, fn, needs, motion=False, tries=4, oled=None):
+def step(name, fn, needs, motion=False, tries=4, oled=None, armed=None):
     """Hardware check, then the step; armed only for driving steps and kept armed between consecutive ones
     (24 Nov: disarm / re-arm around every step cost ~1 s each). Retried up to `tries` times."""
     for k in range(1, tries + 1):
@@ -1112,7 +1131,7 @@ def step(name, fn, needs, motion=False, tries=4, oled=None):
         try:
             show(oled or LABELS.get(name, name.upper()))
             check(needs)
-            arm_if(motion)
+            arm_if(motion if armed is None else armed)   # armed=True: no disarm / re-arm (~2 s) around a dump
             if motion:
                 WHERE['at'] = 'away'
             fn()
@@ -1205,10 +1224,9 @@ def goto_pair_front(ids):
 def ensure_far(ids):
     if not tags_seen(ids):
         find_tags(ids, max_deg=60)
-    # after a diagonal move it is in front within the measurement noise (+-5 cm at 0.8 m): the park squares
-    # again anyway, so squaring here only chased noise with tiny strafes (25 Nov, round 3: ~10 s a station)
-    if not goto_pair_front(ids):
-        square_and_center(ids)
+    # only the diagonal correction here: the park squares and closes in itself (25 Nov: approach and park
+    # each squared 2-3 times and drove in separately, ~17 s per station)
+    goto_pair_front(ids)
     r = st['range']
     # 25 Nov: at 1.4-1.5 m the front ultrasonic flickers between an echo (1.449) and none (1.46): taken as an
     # echo it sent the robot to creep_to, which then saw "nothing ahead" and aborted, try after try. Beyond
@@ -1220,10 +1238,6 @@ def ensure_far(ids):
                 g[1], 'sees nothing' if r is None or r >= NO_ECHO else '%.2f m (beyond its reliable range)' % r))
             drive(min(1.60, g[1] - 0.85), stop_front=0.60, limit=30.0, fast=True)
             square_and_center(ids)
-    r = st['range']
-    if r is not None and 0.65 < r < ULTRA_TRUST_M:
-        # stops on the 0.60 m reading (0.50 was hit on 24 Nov); travel speed, slowing for the reading
-        drive(min(0.80, r - 0.60), stop_front=0.60, limit=20.0, fast=True)
 
 
 def get_item():
@@ -1261,7 +1275,7 @@ def get_item():
 
 
 def dump():
-    say('delivered')
+    say('delivered', wait=False)   # while the tray tips (25 Nov: said first, then tipped: ~2 s)
     if not call(set_tray, SetTray.Request(angle_deg=120.0), 8).success:
         raise Abort('tray did not tilt')
     time.sleep(1.5)
@@ -1470,7 +1484,7 @@ def mission(test_station=None):
         # front 0.225 m is the field-tested dump spot (24 Nov, robot pressing the box, dump landed)
         step('park at electrical', lambda: dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
              ('mega', 'cams'), motion=True)
-        step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
+        step('dump', dump, ('mega', 'speaker'), oled='DUMPING', armed=True)
         say('going_home')
         plan('electrical -> dock', [(-1.70, -0.84), (-1.70, -0.59), W_DOCK, (0.0, 0.0)])
         # back only 0.25 m: backing away from electrical moves toward the tools box corner
@@ -1484,7 +1498,7 @@ def mission(test_station=None):
                                          once('tools.face', lambda: face(math.pi))), ('mega',), motion=True)
         step('approach tools', lambda: ensure_far((16, 17)), ('mega', 'cams'), motion=True)
         step('park at tools', lambda: park_box('tools', (16, 17)), ('mega', 'cams'), motion=True)
-        step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
+        step('dump', dump, ('mega', 'speaker'), oled='DUMPING', armed=True)
         say('going_home')
         plan('tools -> dock', [(-1.60, 0.0), W_DOCK, (0.0, 0.0)])
         step('leave tools', lambda: (back_to(0.70, 'thome.back'),
@@ -1540,7 +1554,7 @@ def park_mechanical():
 def mechanical_tail():
     step('approach mechanical', lambda: ensure_far((12, 13)), ('mega', 'cams'), motion=True)
     step('park at mechanical', park_mechanical, ('mega', 'cams'), motion=True)
-    step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
+    step('dump', dump, ('mega', 'speaker'), oled='DUMPING', armed=True)
     say('going_home')
     plan('mechanical -> dock', [(-1.60, 1.2), (-1.20, 1.2), W_DOCK, (0.0, 0.0)])
     step('mechanical to the dock', lambda: (back_to(0.60, 'mhome.back'),
