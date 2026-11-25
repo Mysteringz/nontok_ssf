@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nontok Field Control</title>
+<style>
+:root{--bg:#f4f6f8;--ink:#152e3b;--muted:#71818c;--line:#dde5e9;--teal:#087e80;--aqua:#25aaa3;--orange:#da8d43;--red:#bc4545;--blue:#607ed4;--white:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}
+header{height:76px;padding:0 4vw;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:750;letter-spacing:1.6px}
+.brand .muted{font-size:11px;letter-spacing:1px;font-weight:500}
+.brand-mark{display:grid;place-items:center;width:32px;height:32px;background:var(--ink);color:#fff;border-radius:8px;font-size:19px}
+.header-right{display:flex;align-items:center;gap:14px;font-size:12px;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+main{max-width:1550px;margin:auto;padding:38px 4vw 48px}
+.intro{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:26px}
+.eyebrow{font-size:10px;letter-spacing:1.7px;font-weight:700;color:var(--muted);margin:0 0 8px;text-transform:uppercase}
+h1{font-size:clamp(26px,3vw,38px);letter-spacing:-1.3px;margin:0;font-weight:650}
+h2{font-size:18px;font-weight:650;letter-spacing:-.3px;margin:0}
+.sub{color:var(--muted);margin:10px 0 0;font-size:14px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:12px}
+.record-label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:#aab6bf;flex:none}
+.dot.active{background:var(--red);box-shadow:0 0 0 4px #bc454512}
+.dot.ok{background:var(--teal);box-shadow:0 0 0 4px #087e8014}
+.connection{padding:17px 20px;display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap}
+.fields{display:flex;align-items:end;gap:9px;flex-wrap:wrap}
+.field-label{display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--muted);font-weight:600}
+button{font:inherit;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);padding:9px 12px;height:37px;cursor:pointer;font-weight:600;font-size:12px;white-space:nowrap;transition:background .15s}
+button:hover{background:#eef4f5}
+button:focus-visible,input:focus-visible{outline:3px solid #25aaa350;outline-offset:2px}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+button.primary:hover{background:#076a6c}
+button.danger{background:#fff3f2;border-color:#eed1cf;color:var(--red)}
+button.toggle{min-width:132px;display:flex;align-items:center;gap:8px;justify-content:center}
+button.toggle i{width:26px;height:15px;border-radius:8px;background:#c9d3d8;position:relative;flex:none;transition:background .15s}
+button.toggle i::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;transition:left .15s}
+button.toggle.on{border-color:var(--teal);color:var(--teal);background:#eaf7f4}
+button.toggle.on i{background:var(--teal)}
+button.toggle.on i::after{left:13px}
+.badge,.small-badge{border:1px solid var(--line);border-radius:5px;padding:5px 7px;font-size:9px;font-weight:700;letter-spacing:1px;white-space:nowrap;text-transform:uppercase}
+.badge.live{background:#eaf7f4;border-color:#c8e7dd;color:var(--teal)}
+.badge.warn{background:#fff7e9;border-color:#eddcbb;color:#9a691c}
+.badge.bad{background:#fff3f2;border-color:#eed1cf;color:var(--red)}
+.small-badge{padding:3px 5px;font-size:8px;letter-spacing:.6px}
+#notice{font-size:12px;color:var(--muted);padding:13px 2px 19px;line-height:1.5;min-height:46px}
+.status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:22px}
+.metric{background:#fff;border:1px solid var(--line);padding:19px 20px;border-radius:10px;min-height:133px;min-width:0}
+.metric-label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:9px;font-weight:700;letter-spacing:1.25px;color:var(--muted);min-height:20px;text-transform:uppercase}
+.metric strong{display:block;font-size:28px;letter-spacing:-.7px;margin:12px 0 10px;font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.metric strong.text{font-size:23px;letter-spacing:-.5px}
+.metric small{font-size:12px;color:var(--muted);margin-left:5px;font-weight:400}
+.metric-foot{font-size:10px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
+.divider{color:#c3cdd3;margin:0 9px;font-weight:300}
+.section{padding:23px;margin-bottom:22px}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.cams{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.cam{min-width:0}
+.cam-frame{position:relative;background:#0f1d25;border-radius:8px;aspect-ratio:4/3;overflow:hidden}
+.cam-frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.cam-empty{position:absolute;inset:0;display:grid;place-items:center;color:#8aa0ab;font-size:12px;text-align:center;padding:16px;line-height:1.6}
+.cam-meta{display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:11px}
+.cam-meta b{font-weight:600}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;margin-bottom:22px}
+.hand-row{display:flex;gap:28px;flex-wrap:wrap;align-items:center}
+.pad{display:grid;grid-template-columns:repeat(3,62px);gap:8px;user-select:none;touch-action:none}
+.pad button{height:62px;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:16px}
+.pad button small{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
+.pad button.down{background:var(--teal);border-color:var(--teal);color:#fff}
+.pad button.down small{color:#d9f1ef}
+.sliders{display:flex;flex-direction:column;gap:14px;min-width:220px}
+.sliders label{display:grid;grid-template-columns:52px 1fr 74px;align-items:center;gap:10px;font-size:11px;color:var(--muted);font-weight:600}
+.sliders input{width:100%;accent-color:var(--teal)}
+.sliders output{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+#blocked{font-size:12px;color:var(--red);min-height:18px}
+.chart-note{font-size:10px;line-height:1.7;color:var(--muted);margin:12px 0 0}
+.legend{display:flex;gap:12px;font-size:9px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:6px;height:6px;border-radius:50%}
+canvas{display:block;width:100%}
+#chart{height:170px;margin-top:6px}
+dl.health{font-size:11px;margin:0}
+.health div{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid #edf0f2}
+.health dt{color:var(--muted)}
+.health dd{margin:0;text-align:right;max-width:62%;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.events{height:260px;overflow:auto;list-style:none;padding:0;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;line-height:1.6}
+.events li{border-bottom:1px solid #edf0f2;padding:6px 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.events li.fail{color:var(--red)}
+.good{color:var(--teal)} .bad{color:var(--red)} .warnc{color:#9a691c}
+footer{display:flex;justify-content:space-between;max-width:1550px;margin:auto;padding:0 4vw 25px;color:var(--muted);font-size:9px;letter-spacing:1px;gap:12px;flex-wrap:wrap}
+[hidden]{display:none!important}
+@media(max-width:1150px){.workspace{grid-template-columns:1fr}.status-grid{grid-template-columns:1fr 1fr}.cams{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){header{height:64px;padding:0 16px}.brand .muted,#clock{display:none}main{padding:24px 16px}
+  .intro{flex-direction:column;align-items:start}.status-grid,.cams{grid-template-columns:1fr}.section{padding:16px}
+  .metric strong{font-size:24px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark">N</span>NONTOK <span class="muted">/ FIELD CONTROL</span></div>
+  <div class="header-right"><span id="armBadge" class="badge" hidden>Armed</span><span id="linkBadge" class="badge warn">Connecting</span><span id="clock"></span></div>
+</header>
+<main>
+  <div class="intro">
+    <div>
+      <p class="eyebrow">ELEC3848 · Jetson Nano</p>
+      <h1>Every move, measured.</h1>
+      <p class="sub">Live from the robot. Driven from your Mac.</p>
+    </div>
+    <div class="record-label"><span id="missionDot" class="dot"></span><span id="missionText">…</span></div>
+  </div>
+
+  <section class="panel connection">
+    <div class="fields">
+      <div class="field-label">Detection<button id="detectBtn" class="toggle" title="Tag outlines on the front views; item box, label and station on the tray view"><i></i><span>Off</span></button></div>
+      <div class="field-label">Tray camera<button id="trayBtn" class="toggle" title="Open or close the tray camera"><i></i><span>Off</span></button></div>
+      <div class="field-label">Empty tray<button id="refBtn" title="Take the empty-tray picture that detection compares against">Set reference</button></div>
+    </div>
+    <div class="fields">
+      <button id="armBtn" class="primary">Arm motors</button>
+      <button id="disarmBtn">Disarm</button>
+      <button id="stopBtn" class="danger" title="Stop and disarm (Space stops too)">Stop</button>
+    </div>
+  </section>
+  <p id="notice">Connecting to the robot…</p>
+
+  <section class="status-grid">
+    <div class="metric"><div class="metric-label">Mission<span id="missionBadge" class="small-badge">—</span></div>
+      <strong id="mOled" class="text">—</strong><div class="metric-foot" id="mLast">—</div></div>
+    <div class="metric"><div class="metric-label">Heading</div>
+      <strong><span id="mYaw">—</span><small>°</small></strong><div class="metric-foot" id="mPose">—</div></div>
+    <div class="metric"><div class="metric-label">Front ultrasonics</div>
+      <strong><span id="mL45">—</span><span class="divider">/</span><span id="mR45">—</span><small>mm</small></strong>
+      <div class="metric-foot" id="mRanges">Left +45° / Right −45°</div></div>
+    <div class="metric"><div class="metric-label">Tray detection<span id="trayBadge" class="small-badge">off</span></div>
+      <strong id="mItem" class="text">—</strong><div class="metric-foot" id="mItemFoot">—</div></div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-title">
+      <div><p class="eyebrow">Cameras</p><h2>Live views</h2></div>
+      <span id="camBadge" class="small-badge">Detection off</span>
+    </div>
+    <div class="cams" id="cams"></div>
+    <p class="chart-note">Pictures come from the nodes that own the cameras, four a second while this page is open. Detection on: AprilTag outlines with their numbers on the front views, and on the tray view a box round whatever differs from the empty-tray reference, with the classifier's answer and station.</p>
+  </section>
+
+  <div class="workspace">
+    <section class="panel section" style="margin-bottom:0">
+      <div class="section-title"><div><p class="eyebrow">Hand control</p><h2>Drive</h2></div><span id="handBadge" class="small-badge">disarmed</span></div>
+      <div class="hand-row">
+        <div class="pad" id="pad">
+          <button data-k="q">Q<small>Turn L</small></button><button data-k="w">W<small>Fwd</small></button><button data-k="e">E<small>Turn R</small></button>
+          <button data-k="a">A<small>Left</small></button><button data-k="s">S<small>Back</small></button><button data-k="d">D<small>Right</small></button>
+        </div>
+        <div class="sliders">
+          <label>Speed<input type="range" id="speed" min="0.03" max="0.25" step="0.01" value="0.10"><output id="speedV"></output></label>
+          <label>Turn<input type="range" id="turn" min="0.1" max="1.0" step="0.05" value="0.5"><output id="turnV"></output></label>
+          <div id="blocked"></div>
+        </div>
+      </div>
+      <p class="chart-note" id="handNote">W/S forward and back, A/D side to side, Q/E turn, Space stops. Keys work while this page has focus. The robot stops 0.5 s after you let go or the link drops, refuses to move toward anything closer than 15 cm, and disarms after a minute without keys.</p>
+      <div class="section-title" style="margin:22px 0 4px"><p class="eyebrow" style="margin:0">Ultrasonics · last 30 s (mm)</p>
+        <div class="legend"><span><i style="background:var(--teal)"></i>Front</span><span><i style="background:var(--orange)"></i>Left +45°</span><span><i style="background:var(--blue)"></i>Right −45°</span></div></div>
+      <canvas id="chart"></canvas>
+    </section>
+    <section class="panel section" style="margin-bottom:0">
+      <div class="section-title"><div><p class="eyebrow">Robot</p><h2>Health</h2></div></div>
+      <dl class="health" id="health"></dl>
+    </section>
+  </div>
+
+  <section class="panel section">
+    <div class="section-title"><div><p class="eyebrow">Mission log</p><h2>Events</h2></div><span class="small-badge">/tmp/mission.log</span></div>
+    <ul class="events" id="events"></ul>
+  </section>
+</main>
+<footer><span>NONTOK · FIELD CONTROL</span><span id="foot">—</span></footer>
+<script>
+const $ = id => document.getElementById(id);
+const CAMS = [['front_left', 'Front left'], ['front_right', 'Front right'], ['tray', 'Tray']];
+let S = null, view = false, rtt = 0;
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+const mm = r => r == null ? 'clear' : Math.round(r * 1000);
+function note(text, bad) { $('notice').textContent = text; $('notice').className = bad ? 'bad' : ''; }
+async function api(path) {
+  try { const r = await (await fetch(path, {cache: 'no-store'})).json(); note(r.message || '', !r.ok); return r; }
+  catch (e) { note('No answer from the robot', true); return null; }
+}
+
+// ---- cameras: each view loads its next picture when the last one arrived ----
+$('cams').innerHTML = CAMS.map(([id, name]) => `<div class="cam"><div class="cam-frame"><img id="img_${id}" alt="${name} camera" hidden><div class="cam-empty" id="empty_${id}">No picture yet</div></div>
+  <div class="cam-meta"><b>${name}</b><span class="muted" id="age_${id}">—</span></div></div>`).join('');
+function camLoop(id) {
+  const img = $('img_' + id);
+  const next = delay => setTimeout(() => { img.src = '/api/cam/' + id + '?t=' + Date.now(); }, delay);
+  img.onload = () => { img.hidden = false; $('empty_' + id).hidden = true; next(150); };
+  img.onerror = () => { img.hidden = true; $('empty_' + id).hidden = false; next(1000); };
+  next(0);
+}
+CAMS.forEach(([id]) => camLoop(id));
+
+// ---- buttons ----
+$('detectBtn').onclick = () => api('/api/detect?on=' + (S && S.detect ? 0 : 1)).then(poll);
+$('trayBtn').onclick = () => { note('Switching the tray camera…'); api('/api/tray_camera?on=' + (S && S.tray_camera ? 0 : 1)).then(poll); };
+$('refBtn').onclick = () => { note('Taking the empty-tray picture: keep the tray clear…'); api('/api/reference'); };
+$('armBtn').onclick = () => { releaseAll(); api('/hand/arm?on=1'); };
+$('disarmBtn').onclick = () => { releaseAll(); api('/hand/arm?on=0'); };
+$('stopBtn').onclick = () => { releaseAll(); api('/hand/arm?on=0'); };
+function setToggle(btn, on) { btn.classList.toggle('on', on); btn.querySelector('span').textContent = on ? 'On' : 'Off'; }
+
+// ---- hand control ----
+const KEYMAP = {w: ['vx', 1], s: ['vx', -1], a: ['vy', 1], d: ['vy', -1], q: ['wz', 1], e: ['wz', -1]};
+const held = {};
+function axes() { const a = {vx: 0, vy: 0, wz: 0}; for (const k in held) if (held[k]) a[KEYMAP[k][0]] += KEYMAP[k][1]; return a; }
+function paintPad() { for (const b of document.querySelectorAll('#pad button')) b.classList.toggle('down', !!held[b.dataset.k]); }
+function sendDrive() {
+  paintPad();
+  if (view) return;
+  const a = axes();
+  fetch(`/hand/drive?vx=${a.vx}&vy=${a.vy}&wz=${a.wz}&speed=${$('speed').value}&turn=${$('turn').value}`, {cache: 'no-store'}).catch(() => {});
+}
+function releaseAll() { for (const k in held) held[k] = false; sendDrive(); }
+setInterval(() => { if (Object.values(held).some(Boolean)) sendDrive(); }, 100);   // keeps the deadman fed
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { releaseAll(); e.preventDefault(); return; }
+  if (KEYMAP[k]) { e.preventDefault(); if (!held[k]) { held[k] = true; sendDrive(); } }
+});
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (KEYMAP[k]) { held[k] = false; sendDrive(); } });
+addEventListener('blur', releaseAll);
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+for (const b of document.querySelectorAll('#pad button')) {
+  b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); held[b.dataset.k] = true; sendDrive(); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => { held[b.dataset.k] = false; sendDrive(); });
+}
+function sliders() { $('speedV').textContent = (+$('speed').value).toFixed(2) + ' m/s'; $('turnV').textContent = (+$('turn').value).toFixed(2) + ' rad/s'; }
+$('speed').oninput = $('turn').oninput = sliders; sliders();
+
+// ---- chart ----
+function drawChart(rows) {
+  const c = $('chart'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const L = 40, B = 18, top = 6, maxMm = 1500, now = Date.now() / 1000;
+  g.font = '10px -apple-system, sans-serif'; g.fillStyle = '#71818c'; g.strokeStyle = '#edf0f2'; g.lineWidth = 1;
+  for (const v of [0, 500, 1000, 1500]) {
+    const y = top + (h - top - B) * (1 - v / maxMm);
+    g.beginPath(); g.moveTo(L, y); g.lineTo(w, y); g.stroke(); g.fillText(v, 4, y + 3);
+  }
+  for (const s of [30, 20, 10, 0]) g.fillText(s ? `-${s}s` : 'now', L + (w - L) * (1 - s / 30) - (s ? 12 : 22), h - 4);
+  [['#087e80', 1], ['#da8d43', 2], ['#607ed4', 3]].forEach(([col, i]) => {
+    g.strokeStyle = col; g.lineWidth = 1.8; g.beginPath(); let pen = false;
+    for (const r of rows) {
+      const x = L + (w - L) * (1 - (now - r[0]) / 30), v = r[i];
+      if (v == null || x < L) { pen = false; continue; }
+      const y = top + (h - top - B) * (1 - Math.min(v * 1000, maxMm) / maxMm);
+      pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true;
+    }
+    g.stroke();
+  });
+}
+
+// ---- state ----
+function row(k, v, cls) { return `<div><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`; }
+function render(s) {
+  S = s; view = s.view_only;
+  $('linkBadge').textContent = view ? 'Live · view only' : 'Live · Jetson'; $('linkBadge').className = 'badge live';
+  $('armBadge').hidden = !s.armed; $('armBadge').className = 'badge warn';
+  $('missionDot').className = 'dot ' + (s.mission_running ? 'active' : 'ok');
+  $('missionText').textContent = s.mission_running ? 'Voice mission running' : 'Mission stopped · hand control';
+  setToggle($('detectBtn'), s.detect); setToggle($('trayBtn'), s.tray_camera);
+  for (const id of ['armBtn', 'disarmBtn']) $(id).disabled = view;
+  const last = s.log.length ? s.log[s.log.length - 1].replace(/^\s*[\d.]+s\s+/, '') : '—';
+  $('mOled').textContent = s.oled || (s.mission_running ? 'RUNNING' : 'IDLE');
+  $('mLast').textContent = last;
+  $('missionBadge').textContent = s.mission_running ? 'live' : 'stopped';
+  $('mYaw').textContent = s.pose ? (s.pose[2] * 57.2958).toFixed(1) : '—';
+  $('mPose').textContent = s.pose ? `X ${s.pose[0].toFixed(2)} m · Y ${s.pose[1].toFixed(2)} m · ${s.vel[0].toFixed(2)} m/s` : 'no odometry';
+  const r = s.ranges;
+  $('mL45').textContent = 'left45' in r ? mm(r.left45) : '—';
+  $('mR45').textContent = 'right45' in r ? mm(r.right45) : '—';
+  $('mRanges').textContent = `Left +45° / Right −45° · front ${'front' in r ? mm(r.front) : '—'} · sides ${'left' in r ? mm(r.left) : '—'} / ${'right' in r ? mm(r.right) : '—'}`;
+  const d = s.detection, t = s.tray;
+  $('trayBadge').textContent = s.detect ? 'on' : 'off'; $('trayBadge').className = 'small-badge' + (s.detect ? ' good' : '');
+  if (s.detect && d && d.item) {
+    $('mItem').textContent = d.item; $('mItemFoot').textContent = `${Math.round(d.confidence * 100)} % · ${d.station ? 'goes to ' + d.station : 'unsure: would go home'}`;
+  } else if (s.detect && d && !d.reference) {
+    $('mItem').textContent = 'No reference'; $('mItemFoot').textContent = 'Clear the tray and press Set reference';
+  } else {
+    $('mItem').textContent = t ? t.state : (s.tray_camera ? '…' : 'Camera off');
+    $('mItemFoot').textContent = t ? `${Math.round(t.fraction * 100)} % changed${t.stable ? ' · steady' : ''}${t.reference ? '' : ' · no reference'}` : (s.detect ? 'Turn the tray camera on' : 'Detection off');
+  }
+  $('camBadge').textContent = s.detect ? 'Detection on' : 'Detection off'; $('camBadge').className = 'small-badge' + (s.detect ? ' good' : '');
+  for (const [id] of CAMS) {
+    const age = s.cameras[id];
+    $('age_' + id).textContent = age == null ? (id === 'tray' && !s.tray_camera ? 'camera off' : 'no picture') : age < 2 ? 'live' : `${age.toFixed(0)} s old`;
+    $('age_' + id).className = age != null && age < 2 ? 'good' : 'muted';
+    if (id === 'tray') $('empty_tray').textContent = s.tray_camera ? 'Waiting for the tray camera…' : 'Tray camera off — switch it on above';
+  }
+  $('handBadge').textContent = view ? 'view only' : s.armed ? 'armed' : 'disarmed';
+  $('handBadge').className = 'small-badge' + (s.armed ? ' warnc' : '');
+  $('blocked').textContent = s.blocked.length ? 'Refused: ' + s.blocked.join(', ') : '';
+  if (view) $('handNote').textContent = 'View-only dashboard (the voice mission is driving). Run ./handctr.sh to drive by hand; it stops the mission first.';
+  const tags = Object.entries(s.tags).map(([c, ids]) => `${c.replace('front_', '')}: ${ids.length ? ids.join(', ') : 'none'}`).join(' · ') || 'no cameras';
+  $('health').innerHTML = row('Base link', s.base_alive ? 'alive' : 'silent', s.base_alive ? 'good' : 'bad')
+    + row('Motors', s.armed ? 'ARMED' : 'disarmed', s.armed ? 'warnc' : '')
+    + row('Base fault', s.fault || 'none', s.fault ? 'bad' : 'good')
+    + row('Battery', s.battery_v > 0.1 ? s.battery_v.toFixed(2) + ' V' : 'not fitted')
+    + row('Tray tilt', s.tray_deg.toFixed(0) + '°')
+    + row('Tags in view', esc(tags))
+    + row('Command', `${s.cmd[0].toFixed(2)} fwd · ${s.cmd[1].toFixed(2)} side · ${s.cmd[2].toFixed(2)} turn`)
+    + row('Link round trip', rtt + ' ms', rtt > 600 ? 'warnc' : '');
+  const fresh = s.log.slice().reverse().map(l => `<li class="${/fail|STOPPED|Abort|refused|not dumping/i.test(l) ? 'fail' : ''}">${esc(l)}</li>`).join('');
+  if ($('events').dataset.last !== fresh) { $('events').innerHTML = fresh || '<li>No mission log yet</li>'; $('events').dataset.last = fresh; }
+  drawChart(s.chart);
+  if (!$('notice').textContent || $('notice').textContent.startsWith('Connecting')) note(s.message || 'Connected.');
+  $('foot').textContent = `Updated ${new Date().toLocaleTimeString([], {hour12: false})}`;
+}
+let failures = 0, timer = null;
+async function poll() {
+  clearTimeout(timer);
+  const t0 = performance.now();
+  try {
+    const s = await (await fetch('/api/state', {cache: 'no-store'})).json();
+    rtt = Math.round(performance.now() - t0); failures = 0; render(s);
+  } catch (e) {
+    if (++failures > 2) { $('linkBadge').textContent = 'No connection'; $('linkBadge').className = 'badge bad'; releaseAll(); }
+  }
+  timer = setTimeout(poll, 400);
+}
+poll();
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString([], {hour12: false}); }, 1000);
+</script>
+</body>
+</html>

@@ -5,9 +5,9 @@ items:
   led: electrical
   resistor: electrical
   bolt: mechanical
-  multimeter: electrical   # 24 Nov: the electrical depot takes multimeters back
-  scissor: mechanical      # 24 Nov trained model (items.onnx): class names must match the model
-  screwdrivers: mechanical
+  multimeter: tools        # 25 Nov: tools station (was electrical on 24 Nov)
+  scissor: tools           # 25 Nov: tools station. 24 Nov trained model (items.onnx): class names must match the model
+  screwdrivers: tools      # 25 Nov: tools station
 # Anything else (or a low-confidence answer) is "unknown": the mission takes it to the
 # "unknown" station (mission.yaml unknown_station) for a person to sort by hand.
 

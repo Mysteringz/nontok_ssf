@@ -73,7 +73,7 @@ def test_station_frames_and_poses():
 def test_every_station_is_consistent_with_tags_and_map():
     bounds, rectangles, resolution = draw_map.load_layout(str(NAV_CONFIG / 'lab_layout.yaml'))
     image = rasterise(bounds, rectangles, resolution)
-    assert set(STATIONS) == {'dock', 'pickup', 'electrical', 'mechanical'}   # no unknown / tools (24 Nov)
+    assert set(STATIONS) == {'dock', 'pickup', 'electrical', 'mechanical', 'tools'}   # no unknown (24 Nov); tools 25 Nov
     for station in STATIONS.values():
         assert tag_spacing(station, TAGS) == pytest.approx(0.30, abs=0.01)
         frame = station_frame(station, TAGS)

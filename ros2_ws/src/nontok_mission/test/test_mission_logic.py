@@ -164,7 +164,7 @@ def nav_targets(robot):
 
 
 @pytest.mark.parametrize('item,station', [
-    ('led', 'electrical'), ('resistor', 'electrical'), ('bolt', 'mechanical'), ('multimeter', 'electrical')])
+    ('led', 'electrical'), ('resistor', 'electrical'), ('bolt', 'mechanical'), ('multimeter', 'tools')])
 def test_full_mission_for_each_station(item, station):
     r = Runner()
     r.robot.classify_script = [(True, item, station, 0.95)]

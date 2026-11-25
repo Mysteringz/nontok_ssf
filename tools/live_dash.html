@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nontok Live Mind</title>
+<style>
+:root{--bg:#f4f6f8;--ink:#152e3b;--muted:#71818c;--line:#dde5e9;--teal:#087e80;--aqua:#25aaa3;--orange:#da8d43;--red:#bc4545;--blue:#607ed4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}
+header{height:76px;padding:0 4vw;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:750;letter-spacing:1.6px}
+.brand .muted{font-size:11px;letter-spacing:1px;font-weight:500}
+.brand-mark{display:grid;place-items:center;width:32px;height:32px;background:var(--ink);color:#fff;border-radius:8px;font-size:19px}
+.header-right{display:flex;align-items:center;gap:14px;font-size:12px;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+main{max-width:1550px;margin:auto;padding:34px 4vw 48px}
+.intro{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px}
+.eyebrow{font-size:10px;letter-spacing:1.7px;font-weight:700;color:var(--muted);margin:0 0 8px;text-transform:uppercase}
+h1{font-size:clamp(26px,3vw,38px);letter-spacing:-1.3px;margin:0;font-weight:650}
+h2{font-size:18px;font-weight:650;letter-spacing:-.3px;margin:0}
+.sub{color:var(--muted);margin:10px 0 0}
+.panel{background:#fff;border:1px solid var(--line);border-radius:12px}
+.record-label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:#aab6bf;flex:none}
+.dot.ok{background:var(--teal);box-shadow:0 0 0 4px #087e8014}
+.dot.bad{background:var(--red);box-shadow:0 0 0 4px #bc454512}
+.badge,.small-badge{border:1px solid var(--line);border-radius:5px;padding:5px 7px;font-size:9px;font-weight:700;letter-spacing:1px;white-space:nowrap;text-transform:uppercase}
+.badge.live{background:#eaf7f4;border-color:#c8e7dd;color:var(--teal)}
+.badge.warn{background:#fff7e9;border-color:#eddcbb;color:#9a691c}
+.badge.bad{background:#fff3f2;border-color:#eed1cf;color:var(--red)}
+.small-badge{padding:3px 5px;font-size:8px;letter-spacing:.6px}
+.stages{padding:20px 24px;margin-bottom:22px}
+.steps{display:flex;list-style:none;padding:0;margin:14px 0 0;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.steps li{display:flex;align-items:center;gap:8px;color:#a6b4bc;font-size:11px;font-variant-numeric:tabular-nums}
+.steps li span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid #d3dce1;font-size:10px;font-weight:700}
+.steps li.done{color:var(--teal)}
+.steps li.done span{border-color:#bfe2dc;background:#eaf7f4}
+.steps li.active{color:var(--ink);font-weight:700}
+.steps li.active span{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 0 0 4px #087e8018}
+.status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:22px}
+.metric{background:#fff;border:1px solid var(--line);padding:19px 20px;border-radius:10px;min-height:128px;min-width:0}
+.metric-label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:9px;font-weight:700;letter-spacing:1.25px;color:var(--muted);min-height:20px;text-transform:uppercase}
+.metric strong{display:block;font-size:24px;letter-spacing:-.5px;margin:12px 0 10px;font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.metric small{font-size:12px;color:var(--muted);margin-left:5px;font-weight:400}
+.metric-foot{font-size:10px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
+.workspace{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px}
+.section{padding:23px;min-width:0}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+#map{display:block;width:100%;height:auto;background:#f7f9fa;border-radius:8px}
+.key{display:flex;gap:16px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:12px}
+.key span{display:flex;align-items:center;gap:6px}
+.key i{display:inline-block;width:14px;height:3px;border-radius:2px}
+.thinking{list-style:none;padding:0;margin:0;max-height:560px;overflow:auto}
+.thinking li{display:grid;grid-template-columns:62px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid #edf0f2;font-size:12px;line-height:1.5}
+.thinking li time{color:var(--muted);font-variant-numeric:tabular-nums;font-size:11px}
+.thinking li.fail{color:var(--red)}
+.thinking li.new{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:#eaf7f4}to{background:transparent}}
+#staleNote{font-size:12px;color:#9a691c;background:#fff7e9;border:1px solid #eddcbb;border-radius:8px;padding:10px 14px;margin-bottom:18px}
+footer{display:flex;justify-content:space-between;max-width:1550px;margin:auto;padding:0 4vw 25px;color:var(--muted);font-size:9px;letter-spacing:1px;gap:12px}
+[hidden]{display:none!important}
+@media(max-width:1100px){.workspace{grid-template-columns:1fr}.status-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){header{height:64px;padding:0 16px}.brand .muted,#clock{display:none}main{padding:22px 16px}.status-grid{grid-template-columns:1fr}.section,.stages{padding:16px}.intro{flex-direction:column;align-items:start}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark">N</span>NONTOK <span class="muted">/ LIVE MIND</span></div>
+  <div class="header-right"><span id="armBadge" class="badge warn" hidden>Armed</span><span id="linkBadge" class="badge warn">Connecting</span><span id="clock"></span></div>
+</header>
+<main>
+  <div class="intro">
+    <div><p class="eyebrow">Mission · live</p><h1>What Nontok is thinking.</h1><p class="sub">Stage, reasoning, localization and route, streamed from the robot.</p></div>
+    <div class="record-label"><span id="rateDot" class="dot"></span><span id="rate">—</span></div>
+  </div>
+  <div id="staleNote" hidden></div>
+
+  <section class="panel stages">
+    <div class="section-title" style="margin:0"><div><p class="eyebrow" style="margin:0">Stage</p></div><span id="oled" class="small-badge">—</span></div>
+    <ol class="steps" id="steps"></ol>
+  </section>
+
+  <section class="status-grid">
+    <div class="metric"><div class="metric-label">Doing now<span id="tryBadge" class="small-badge">—</span></div>
+      <strong id="step">—</strong><div class="metric-foot" id="stageFoot">—</div></div>
+    <div class="metric"><div class="metric-label">Item → station</div>
+      <strong id="item">—</strong><div class="metric-foot" id="itemFoot">—</div></div>
+    <div class="metric"><div class="metric-label">Localization<span id="poseSrc" class="small-badge">—</span></div>
+      <strong id="pose">—</strong><div class="metric-foot" id="poseFoot">—</div></div>
+    <div class="metric"><div class="metric-label">Senses</div>
+      <strong><span id="front">—</span><small>front</small></strong><div class="metric-foot" id="tags">—</div></div>
+  </section>
+
+  <div class="workspace">
+    <section class="panel section">
+      <div class="section-title"><div><p class="eyebrow">Localization &amp; path finding</p><h2>Room</h2></div><span id="planName" class="small-badge">no route</span></div>
+      <canvas id="map" width="900" height="640"></canvas>
+      <div class="key">
+        <span><i style="background:var(--teal)"></i>Robot &amp; trail</span><span><i style="background:var(--blue)"></i>Planned route</span>
+        <span><i style="background:var(--orange)"></i>Located on tags</span><span><i style="background:#22a06b"></i>Tags in view</span>
+      </div>
+    </section>
+    <section class="panel section">
+      <div class="section-title"><div><p class="eyebrow">Reasoning</p><h2>Thinking</h2></div><span class="small-badge">newest first</span></div>
+      <ul class="thinking" id="thinking"></ul>
+    </section>
+  </div>
+</main>
+<footer><span>NONTOK · LIVE MIND</span><span id="foot">—</span></footer>
+<script>
+const $ = id => document.getElementById(id);
+const STAGES = ['Listening', 'To pickup', 'Parking at pickup', 'Item & classify', 'To station', 'Parking at station', 'Dumping', 'Going home', 'Docking'];
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+let layout = null, trail = [], L = null, times = [], shownThinking = '';
+$('steps').innerHTML = STAGES.map((s, i) => `<li data-s="${s}"><span>${i + 1}</span>${s}</li>`).join('');
+fetch('/layout').then(r => r.json()).then(l => { if (l && l.bounds) layout = l; });
+
+// ---- map: station wall at the top, dock at the bottom, +y (pickup side) to the right ----
+function draw(d) {
+  const c = $('map'), g = c.getContext('2d');
+  const W = c.clientWidth, dpr = devicePixelRatio || 1;
+  if (!layout) { g.clearRect(0, 0, c.width, c.height); return; }
+  const [xmin, ymin, xmax, ymax] = layout.bounds, pad = 24;
+  const k = (W - 2 * pad) / (ymax - ymin), H = Math.round((xmax - xmin) * k + 2 * pad);
+  if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; c.style.height = H + 'px'; }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const SX = y => pad + (y - ymin) * k, SY = x => pad + (x - xmin) * k;
+  g.fillStyle = '#c7d2d8';
+  for (const [x0, y0, x1, y1] of layout.walls) g.fillRect(SX(Math.min(y0, y1)), SY(Math.min(x0, x1)), Math.abs(y1 - y0) * k, Math.abs(x1 - x0) * k);
+  // grid every metre
+  g.strokeStyle = '#e6ecef'; g.lineWidth = 1;
+  for (let x = Math.ceil(xmin); x <= xmax; x++) { g.beginPath(); g.moveTo(SX(ymin), SY(x)); g.lineTo(SX(ymax), SY(x)); g.stroke(); }
+  for (let y = Math.ceil(ymin); y <= ymax; y++) { g.beginPath(); g.moveTo(SX(y), SY(xmin)); g.lineTo(SX(y), SY(xmax)); g.stroke(); }
+  const seen = new Set(Object.values((d && d.tags) || {}).flat());
+  for (const [id, [x, y]] of Object.entries(layout.tags)) {
+    g.fillStyle = seen.has(+id) ? '#22a06b' : '#8fa0aa'; g.fillRect(SX(y) - 4, SY(x) - 4, 8, 8);
+  }
+  g.font = '600 12px -apple-system, sans-serif'; g.textAlign = 'center';
+  for (const [name, [x, y]] of Object.entries(layout.stations)) {
+    const ox = x < -1 ? 0.32 : x > 0 ? -0.32 : 0, oy = y < -1 ? 0.32 : 0;
+    const active = d && (d.station === name || (d.plan && d.plan.name.endsWith(name)));
+    g.fillStyle = active ? '#087e80' : '#52646f'; g.fillText(name, SX(y + oy), SY(x + ox) + 4);
+  }
+  if (d && d.plan && d.plan.points.length > 1) {
+    g.strokeStyle = '#607ed4'; g.lineWidth = 2.5; g.setLineDash([7, 6]); g.beginPath();
+    d.plan.points.forEach(([x, y], i) => i ? g.lineTo(SX(y), SY(x)) : g.moveTo(SX(y), SY(x))); g.stroke(); g.setLineDash([]);
+    const [tx, ty] = d.plan.points[d.plan.points.length - 1];
+    g.fillStyle = '#607ed4'; g.beginPath(); g.arc(SX(ty), SY(tx), 6, 0, 7); g.fill();
+  }
+  if (d && d.located && Date.now() / 1000 - d.located.t < 120) {
+    const {x, y, yaw} = d.located; g.strokeStyle = '#da8d43'; g.lineWidth = 2;
+    g.beginPath(); g.arc(SX(y), SY(x), 11, 0, 7); g.stroke();
+    g.beginPath(); g.moveTo(SX(y), SY(x)); g.lineTo(SX(y + 0.3 * Math.sin(yaw)), SY(x + 0.3 * Math.cos(yaw))); g.stroke();
+  }
+  if (trail.length > 1) {
+    g.strokeStyle = 'rgba(8,126,128,.45)'; g.lineWidth = 2; g.beginPath();
+    trail.forEach(([x, y], i) => i ? g.lineTo(SX(y), SY(x)) : g.moveTo(SX(y), SY(x))); g.stroke();
+  }
+  const p = d && (d.pose_global || d.pose_odom);
+  if (p) {
+    const [x, y, yaw] = p, cx = SX(y), cy = SY(x);
+    g.save(); g.translate(cx, cy); g.rotate(Math.atan2(Math.cos(yaw), Math.sin(yaw)));   // screen angle of the heading
+    g.fillStyle = '#087e80'; g.fillRect(-0.17 * k, -0.14 * k, 0.34 * k, 0.28 * k);
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(0.15 * k, 0); g.lineTo(0.02 * k, -0.08 * k); g.lineTo(0.02 * k, 0.08 * k); g.fill();
+    g.restore();
+    if (d.front != null && d.front < 1.45) {
+      g.strokeStyle = d.front < 0.3 ? '#bc4545' : '#da8d43'; g.lineWidth = 2; g.beginPath();
+      g.moveTo(cx, cy); g.lineTo(SX(y + (d.front + 0.13) * Math.sin(yaw)), SY(x + (d.front + 0.13) * Math.cos(yaw))); g.stroke();
+    }
+  }
+}
+
+// ---- state ----
+function render(d) {
+  const now = Date.now() / 1000;
+  if (d.stale) {
+    $('linkBadge').textContent = 'Robot quiet'; $('linkBadge').className = 'badge warn';
+    $('staleNote').hidden = false;
+    $('staleNote').textContent = d.age_s == null
+      ? 'The mission is not sending live data. Start it (./run.sh on the Jetson) - a mission_run.py from before the live view also sends nothing. Newest log: ' + (d.log.slice(-1)[0] || '—')
+      : `No live data for ${d.age_s} s: the mission is stopped or restarting. Newest log: ${d.log.slice(-1)[0] || '—'}`;
+    $('rateDot').className = 'dot bad'; $('rate').textContent = 'no updates';
+    return;
+  }
+  L = d; times.push(now); times = times.filter(t => now - t < 3);
+  $('staleNote').hidden = true;
+  $('linkBadge').textContent = 'Live'; $('linkBadge').className = 'badge live';
+  $('rateDot').className = 'dot ok'; $('rate').textContent = `${(times.length / 3).toFixed(1)} updates/s · up ${Math.round(d.up_s)} s`;
+  $('armBadge').hidden = !d.armed;
+  const si = STAGES.indexOf(d.stage);
+  for (const li of $('steps').children) { const i = STAGES.indexOf(li.dataset.s); li.className = i === si ? 'active' : (si > 0 && i < si && d.stage !== 'Listening' ? 'done' : ''); }
+  $('oled').textContent = d.oled || '—';
+  $('step').textContent = d.step || '—';
+  $('tryBadge').textContent = d.try ? 'try ' + d.try + ' of 4' : '—'; $('tryBadge').className = 'small-badge' + (d.try > 1 ? ' badge warn' : '');
+  $('stageFoot').textContent = `${d.stage}${d.at ? ' · last parked: ' + d.at : ''}`;
+  $('item').textContent = d.item || '—';
+  $('itemFoot').textContent = d.station ? 'goes to ' + d.station : (d.item ? 'no station: going home' : 'nothing aboard yet');
+  const p = d.pose_global || d.pose_odom;
+  $('poseSrc').textContent = d.pose_global ? 'map (EKF)' : d.pose_odom ? 'odometry' : 'none';
+  $('pose').textContent = p ? `${p[0].toFixed(2)}, ${p[1].toFixed(2)} m` : '—';
+  const loc = d.located;
+  $('poseFoot').textContent = (p ? `heading ${(p[2] * 57.3).toFixed(0)}°` : 'no pose') +
+    (loc ? ` · located on ${loc.station} tags ${Math.round(now - loc.t)} s ago at ${loc.x.toFixed(2)}, ${loc.y.toFixed(2)}` : '');
+  $('front').textContent = d.front == null ? '—' : d.front >= 1.45 ? 'clear' : Math.round(d.front * 1000) + ' mm';
+  const tags = Object.entries(d.tags || {}).map(([c, ids]) => `${c.replace('front_', '')}: ${ids.length ? ids.join(', ') : '—'}`);
+  $('tags').textContent = tags.length ? 'tags · ' + tags.join(' · ') : 'no camera data';
+  $('planName').textContent = d.plan ? d.plan.name : 'no route';
+  if (p && (!trail.length || Math.hypot(trail[trail.length - 1][0] - p[0], trail[trail.length - 1][1] - p[1]) > 0.02)) { trail.push([p[0], p[1]]); if (trail.length > 800) trail.shift(); }
+  const key = JSON.stringify(d.thinking.slice(-1));
+  if (key !== shownThinking) {
+    const before = shownThinking; shownThinking = key;
+    $('thinking').innerHTML = d.thinking.slice().reverse().map(([t, s], i) =>
+      `<li class="${/fail|STOPPED|refused|not dumping|Abort/i.test(s) ? 'fail' : ''}${i === 0 && before ? ' new' : ''}"><time>${new Date(t * 1000).toLocaleTimeString([], {hour12: false})}</time><span>${esc(s)}</span></li>`).join('');
+  }
+  draw(d);
+  $('foot').textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour12: false});
+}
+function connect() {
+  const es = new EventSource('/stream');
+  es.onmessage = e => { try { render(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+  es.onerror = () => { $('linkBadge').textContent = 'No connection'; $('linkBadge').className = 'badge bad'; es.close(); setTimeout(connect, 2000); };
+}
+connect();
+addEventListener('resize', () => draw(L));
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString([], {hour12: false}); }, 1000);
+</script>
+</body>
+</html>

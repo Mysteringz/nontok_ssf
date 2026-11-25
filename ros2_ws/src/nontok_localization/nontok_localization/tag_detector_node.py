@@ -39,6 +39,10 @@ class TagDetectorNode(Node):
         # cannot stream at the same time on the Jetson's single USB 2.0 bus, so the tray
         # node pauses this detector while it looks at the tray.
         p('paused', False)
+        # The dashboard's picture: overlay draws the tags found (the field dashboard's detection switch),
+        # debug_period_s is the time between pictures while someone watches. Both change while running.
+        p('overlay', True)
+        p('debug_period_s', 0.5)
         self._camera_args = (device, p('width', 1280).value, p('height', 720).value, p('fps', 30).value,
                              exposure if exposure >= 0 else None)
         self.camera = LatestFrameCamera(*self._camera_args, gray=True)
@@ -106,7 +110,8 @@ class TagDetectorNode(Node):
                 msg.detections.append(out)
             self.pub.publish(msg)   # also when empty: shows the camera is alive
 
-            if (self.debug or now - self._watched < 3.0) and now - self._last_debug > 0.5:
+            period = self.get_parameter('debug_period_s').value
+            if (self.debug or now - self._watched < 3.0) and now - self._last_debug > period:
                 self._last_debug = now
                 self._publish_debug(frame, detections, msg.header)
 
@@ -116,7 +121,7 @@ class TagDetectorNode(Node):
 
     def _publish_debug(self, frame, detections, header) -> None:
         view = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if frame.ndim == 2 else frame.copy()
-        for d in detections:
+        for d in detections if self.get_parameter('overlay').value else ():
             points = d.corners.astype(int)
             cv2.polylines(view, [points.reshape(-1, 1, 2)], True, (0, 255, 0), 3)
             cv2.putText(view, str(d.id), tuple(points[0]), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)

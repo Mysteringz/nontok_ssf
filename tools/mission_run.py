@@ -1,5 +1,6 @@
 """Voice-called return run (24 Nov 2026), scripted routes in the real room, no Nav2. Start docked.
-"Nontok" -> dock to pickup -> empty-tray reference, ask for the item, classify -> electrical depot, dump
+"Nontok" -> dock to pickup -> empty-tray reference, ask for the item, classify -> its station
+(electrical, mechanical or tools), dump
 -> back to the dock. Speaks only while standing still (the speaker shares the USB hub with the cameras).
 Before every step it checks the USB devices that step needs (front cameras, Mega, tray camera, speaker, mic);
 a silent one gets its node restarted, then its USB port reset (sysfs authorized 0/1), then the step is retried.
@@ -35,11 +36,58 @@ SPEAKER = 'plughw:CARD=Audio,DEV=0'
 BEEP = '/tmp/parking_beep.wav'
 BEEP_WHILE_MOVING = False   # 24 Nov: the speaker shares the USB hub with the cameras; they dropped out while it beeped
 NO_ECHO = 1.45          # the front ultrasonic reports 1.5 m for "nothing in range"
+# 25 Nov: the front ultrasonic alone can take the near edge of a box for its back wall and stop the robot short,
+# so the tray dumps in front of the box. The two 45 deg ultrasonics sit low and see the box lip only when the
+# robot is right at the box. Before a dump the working ones must read close, or the wheels must stall against
+# the box (confirm_at_box).
+LIP_NEAR = 0.12         # both 45 deg sensors at or under this = at the box   TODO tune on the real boxes
+LIP_EXTRA = 0.15        # at most this much further in on the encoders to find the lip
+LIP_MEMORY_S = 10.0     # under 20 mm the sensors report no echo: their last echo, if close and this recent, counts
+                        # (long enough to cover a whole push-in; any later real echo replaces it)
+LIP_SENSORS = ('left45', 'right45')
 T0 = time.time()
+
+
+# ---- live data for the Mac: tools/live_dash.py streams LIVE_FILE (./run_dash.sh). Small: no pictures. ----
+LIVE_FILE = '/tmp/nontok_live.json'
+LIVE_LAYOUT = '/tmp/nontok_live_layout.json'
+LIVE = {'stage': 'Starting', 'step': '', 'try': 0, 'plan': None, 'located': None, 'item': '', 'station': '',
+        'thinking': [], 'started': time.time()}
+STAGES = ('Listening', 'To pickup', 'Parking at pickup', 'Item & classify', 'To station', 'Parking at station',
+          'Dumping', 'Going home', 'Docking')
+
+
+def stage_of(step_name):
+    n = step_name
+    if n.startswith('wait for the wake'):
+        return 'Listening'
+    if n in ('leave the dock', 'approach the pickup'):
+        return 'To pickup'
+    if n == 'park at the pickup':
+        return 'Parking at pickup'
+    if n == 'get the item':
+        return 'Item & classify'
+    if n == 'park at the dock' or n == 'home: park at the dock':
+        return 'Docking'
+    if n.startswith('home:') or n.startswith('leave') or n in ('approach the dock', 'mechanical to the dock line'):
+        return 'Going home'
+    if n.startswith('park at'):
+        return 'Parking at station'
+    if n == 'dump':
+        return 'Dumping'
+    if n.startswith('pickup to') or n.startswith('approach'):
+        return 'To station'
+    return LIVE['stage']
+
+
+def plan(name, points):
+    """The route the robot is about to drive, in map metres, for the live view."""
+    LIVE['plan'] = {'name': name, 'points': [[round(x, 3), round(y, 3)] for x, y in points], 't': time.time()}
 
 
 def log(s):
     print('%6.1fs  %s' % (time.time() - T0, s), flush=True)
+    LIVE['thinking'] = (LIVE['thinking'] + [[round(time.time(), 2), s]])[-14:]
 
 
 def make_beep():
@@ -92,7 +140,8 @@ make_beep()
 beeper = Beeper()
 rclpy.init()
 n = Node('home_from_pickup')
-st = {'x': None, 'y': None, 'yaw': None, 'range': None, 'tags': {}, 'u': {}, 'c': {}, 'tray': None, 'wake': 0}
+st = {'x': None, 'y': None, 'yaw': None, 'range': None, 'tags': {}, 'u': {}, 'c': {}, 'tray': None, 'wake': 0,
+      'lip': {name: {'t': 0.0, 'echo': None, 'echo_t': 0.0, 'ever': False} for name in LIP_SENSORS}}
 # camera: (x, y, viewing yaw rad, fx, cx) from robot.yaml and the 24 Nov calibrations
 CAMS = {'front_left': (0.12, 0.080, math.radians(-1.1), 845.0, 627.8),
         'front_right': (0.12, -0.080, math.radians(-3.4), 840.0, 598.6)}
@@ -114,7 +163,30 @@ def on_tags(cam, m):
 
 
 n.create_subscription(Odometry, 'odometry/local', on_odom, 20)
+
+
+def on_global(m):
+    q = m.pose.pose.orientation
+    st['gpose'] = (m.pose.pose.position.x, m.pose.pose.position.y,
+                   math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
+    st['gpose_t'] = time.time()
+
+
+n.create_subscription(Odometry, 'odometry/global', on_global, 5)
 n.create_subscription(Range, 'range/front', lambda m: (st.__setitem__('range', m.range), st.__setitem__('range_t', time.time())), 5)
+
+
+def on_lip(name, m):
+    """A 45 deg reading. 'echo' keeps the newest real echo: after a close one the sensor may go silent because the
+    lip is now under its 20 mm minimum, and the bridge then reports 1.5 m ("clear") - that must not count as far."""
+    s = st['lip'][name]
+    s['t'] = time.time()
+    if m.range < NO_ECHO:
+        s['echo'], s['echo_t'], s['ever'] = m.range, s['t'], True
+
+
+for name in LIP_SENSORS:
+    n.create_subscription(Range, 'range/' + name, lambda m, k=name: on_lip(k, m), 5)
 for cam in ('front_left', 'front_right'):
     n.create_subscription(TagDetectionArray, 'tags/%s/detections' % cam,
                           lambda m, c=cam: on_tags(c, m), 5)
@@ -423,6 +495,76 @@ def push_in(dist, limit=8.0):
         time.sleep(0.05)
     stop()
     log('pushed in %.3f m (encoders), front %.3f m' % (math.hypot(st['x'] - x0, st['y'] - y0), st['range'] or -1))
+
+
+def lip_seen(name):
+    """True if this 45 deg sensor sees the box lip: its newest echo is close and recent (so also when it has
+    since gone silent from being under 20 mm). Abort if the sensor has stopped reporting at all."""
+    s, now = st['lip'][name], time.time()
+    if now - s['t'] > 1.0:
+        raise Abort('no reading from the %s ultrasonic' % name)
+    return s['echo'] is not None and s['echo'] <= LIP_NEAR and now - s['echo_t'] <= LIP_MEMORY_S
+
+
+def lip_text():
+    out = []
+    for name in LIP_SENSORS:
+        s, now = st['lip'][name], time.time()
+        if s['echo'] is None or now - s['echo_t'] > LIP_MEMORY_S:
+            out.append('%s clear' % name)
+        elif now - s['echo_t'] > 0.3:
+            out.append('%s silent, last echo %.3f m' % (name, s['echo']))   # under 20 mm, or lost
+        else:
+            out.append('%s %.3f m' % (name, s['echo']))
+    return ', '.join(out)
+
+
+def lip_sensors():
+    """The 45 deg sensors that work: one that has not given a single echo since the mission started is taken
+    as broken (25 Nov: left45 read 1.5 m, i.e. no echo, all run long) and left out of the lip check."""
+    working = [k for k in LIP_SENSORS if st['lip'][k]['ever']]
+    for k in LIP_SENSORS:
+        if k not in working:
+            log('WARNING: the %s ultrasonic has given no echo since the start: left out of the lip check' % k)
+    return working
+
+
+def confirm_at_box(station):
+    """Before a dump: make sure the robot is really at the box, not stopped short because the front ultrasonic
+    read the box's near edge. At the box = every working low 45 deg sensor sees the lip, or the wheels stall
+    against the box. Otherwise creep in on the encoders (front ignored - it may read the box itself), at most
+    LIP_EXTRA. Neither lip nor box after that -> Abort, so the park step is retried instead of dumping short."""
+    time.sleep(0.3)   # a fresh reading from both after stopping
+    sensors = lip_sensors()
+    if sensors and all(lip_seen(k) for k in sensors):
+        log('%s: at the box (%s)' % (station, lip_text()))
+        return
+    log('%s: the box lip is not seen (%s, front %.3f m): creeping in' % (station, lip_text(), st['range'] or -1))
+    x0, y0 = st['x'], st['y']
+    end = time.time() + 10.0
+    last_t, last_done = time.time(), 0.0
+    stalled = False
+    while not (sensors and all(lip_seen(k) for k in sensors)):
+        done = math.hypot(st['x'] - x0, st['y'] - y0)
+        if done >= LIP_EXTRA or time.time() > end:
+            break
+        if time.time() - last_t > 1.0:
+            if done - last_done < 0.005:
+                stalled = True
+                break
+            last_t, last_done = time.time(), done
+        send(vx=0.04)
+        time.sleep(0.05)
+    stop()
+    time.sleep(0.3)
+    done = math.hypot(st['x'] - x0, st['y'] - y0)
+    if stalled:
+        log('%s: at the box - the wheels stalled against it after %.3f m more (%s)' % (station, done, lip_text()))
+    elif sensors and all(lip_seen(k) for k in sensors):
+        log('%s: at the box - lip seen after %.3f m more (%s)' % (station, done, lip_text()))
+    else:
+        raise Abort('%s: neither the box lip nor the box after %.3f m more (%s); not dumping short' % (
+            station, done, lip_text()))
 
 
 def measure(ids, secs=0.6):
@@ -823,13 +965,14 @@ def arm_if(on):
         ARMED['on'] = on
 
 
-LABELS = {'home: back off': 'FIND DOCK', 'home: find the dock': 'FIND DOCK', 'home: approach the dock': 'FIND DOCK', 'home: park at the dock': 'DOCKING', 'leave the dock': 'TO PICKUP', 'approach the pickup': 'TO PICKUP', 'park at the pickup': 'PARK PICKUP', 'leave the pickup': 'LEAVE PICKUP', 'approach electrical': 'TO ELECTRICAL', 'park at electrical': 'PARK ELECTRICAL', 'leave electrical': 'GOING HOME', 'pickup to mechanical': 'TO MECHANICAL', 'approach the dock': 'GOING HOME', 'park at the dock': 'DOCKING', 'approach mechanical': 'TO MECHANICAL', 'park at mechanical': 'PARK MECHANICAL', 'mechanical to the pickup row': 'GOING HOME'}   # 16-character OLED text per step
+LABELS = {'home: back off': 'FIND DOCK', 'home: find the dock': 'FIND DOCK', 'home: approach the dock': 'FIND DOCK', 'home: park at the dock': 'DOCKING', 'leave the dock': 'TO PICKUP', 'approach the pickup': 'TO PICKUP', 'park at the pickup': 'PARK PICKUP', 'leave the pickup': 'LEAVE PICKUP', 'approach electrical': 'TO ELECTRICAL', 'park at electrical': 'PARK ELECTRICAL', 'leave electrical': 'GOING HOME', 'pickup to mechanical': 'TO MECHANICAL', 'approach the dock': 'GOING HOME', 'park at the dock': 'DOCKING', 'approach mechanical': 'TO MECHANICAL', 'park at mechanical': 'PARK MECHANICAL', 'mechanical to the dock line': 'GOING HOME', 'pickup to electrical': 'TO ELECTRICAL', 'pickup to tools': 'TO TOOLS', 'approach tools': 'TO TOOLS', 'park at tools': 'PARK TOOLS', 'leave tools': 'GOING HOME'}   # 16-character OLED text per step
 
 
 def step(name, fn, needs, motion=False, tries=4, oled=None):
     """Hardware check, then the step; armed only for driving steps and kept armed between consecutive ones
     (24 Nov: disarm / re-arm around every step cost ~1 s each). Retried up to `tries` times."""
     for k in range(1, tries + 1):
+        LIVE.update(step=name, stage=stage_of(name), **{'try': k})
         try:
             show(oled or LABELS.get(name, name.upper()))
             check(needs)
@@ -951,7 +1094,7 @@ def dump():
 
 
 
-OTHER_TAGS = (2, 3, 10, 11, 12, 13)
+OTHER_TAGS = (2, 3, 10, 11, 12, 13, 16, 17)
 
 
 def docked():
@@ -979,6 +1122,71 @@ def spin_search(ids, step_deg=30):
     raise Abort('tags %s not seen in a full turn' % (ids,))
 
 
+STATION_PAIRS = {(2, 3): 'pickup', (12, 13): 'mechanical', (16, 17): 'tools', (10, 11): 'electrical'}
+DOCK_VIEW = (-0.75, 0.0)   # map: 1.1 m out from the dock wall on its centre line - the dock tags are in view here
+TAGS_FILE = '/nontok/ros2_ws/src/nontok_localization/config/tags.yaml'
+
+
+def pose_from_pair(ids, geometry, tags):
+    """Robot (x, y, heading) in the map from a station pair seen as (skew_deg, middle_x, middle_y) in the
+    robot frame (pair_geometry) and the pair's place in tags.yaml. skew = the turn that would face the wall
+    square, so the heading is (the tags' outward normal + 180 deg) - skew."""
+    skew, mx, my = geometry
+    left, right = tags[min(ids)], tags[max(ids)]
+    cx, cy = (left['x'] + right['x']) / 2.0, (left['y'] + right['y']) / 2.0
+    th = wrap(math.radians(left['yaw_deg']) + math.pi - math.radians(skew))
+    return (cx - (math.cos(th) * mx - math.sin(th) * my), cy - (math.sin(th) * mx + math.cos(th) * my), th)
+
+
+def locate_from_view():
+    """(x, y, heading, station) from a station pair in view now, or None."""
+    import yaml
+    tags = yaml.safe_load(open(TAGS_FILE))['tags']
+    for ids, name in STATION_PAIRS.items():
+        if tags_seen(ids) and all(i in tags for i in ids):
+            g = measure(ids)
+            if g is not None:
+                x, y, th = pose_from_pair(ids, g, tags)
+                LIVE['located'] = {'x': round(x, 3), 'y': round(y, 3), 'yaw': round(th, 3), 'tags': list(ids),
+                                   'station': name, 't': time.time()}
+                log('located on the %s tags %s (%.2f m away): x %+.2f m, y %+.2f m, heading %+.0f deg' % (
+                    name, ids, math.hypot(g[1], g[2]), x, y, math.degrees(th)))
+                return x, y, th, name
+    return None
+
+
+def walk_to_dock_view(x, y, th):
+    """From a located pose: turn toward DOCK_VIEW, drive there, turn to face the dock wall (+x)."""
+    tx, ty = DOCK_VIEW
+    dist = math.hypot(tx - x, ty - y)
+    plan('back to where the dock is in view', [(x, y), DOCK_VIEW, (0.0, 0.0)])
+    if dist > 0.15:
+        bearing = math.atan2(ty - y, tx - x)
+        log('walking %.2f m toward the dock (turn %+.0f deg)' % (dist, math.degrees(wrap(bearing - th))))
+        turn(math.degrees(wrap(bearing - th)), limit=20.0)
+        drive(dist, stop_front=0.35, limit=40.0)
+        th = bearing
+    turn(math.degrees(wrap(0.0 - th)), limit=20.0)
+
+
+def find_dock(step_deg=30):
+    """Lost: turn on the spot until the dock tags are in view. If a station's tags show up first, work out where
+    the robot is from them and walk to where the dock can be seen, then look for it there (25 Nov: from the far
+    side of the room the dock tags are out of sight, so spinning alone never finds them)."""
+    for k in range(360 // step_deg):
+        time.sleep(1.2)
+        if tags_seen((0, 1)):
+            log('dock tags in view after %d deg' % (k * step_deg))
+            return
+        located = locate_from_view()
+        if located is not None:
+            walk_to_dock_view(*located[:3])
+            find_tags((0, 1), max_deg=60)
+            return
+        turn(step_deg)
+    raise Abort('neither the dock tags nor any station tags seen in a full turn')
+
+
 def go_home():
     """From anywhere the dock tags can be seen: back off a wall if close, find the tags, approach, dock."""
     def back_off():
@@ -986,10 +1194,30 @@ def go_home():
         if r is not None and r < 0.45:
             drive(-(0.55 - r))
     step('home: back off', back_off, ('mega',), motion=True)
-    step('home: find the dock', lambda: tags_seen((0, 1)) or spin_search((0, 1)), ('mega', 'cams'), motion=True)
+    step('home: find the dock', lambda: tags_seen((0, 1)) or find_dock(), ('mega', 'cams'), motion=True)
     step('home: approach the dock', lambda: ensure_far((0, 1)), ('mega', 'cams'), motion=True)
     step('home: park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16),
          ('mega', 'cams'), motion=True)
+
+
+# ---- the room (25 Nov layout, tags.yaml): facing the station wall, from left to right: tools box (16, 17,
+# the old pickup spot, straight across from the dock), mechanical box (12, 13) ~1.2 m right of it, the pickup
+# (2, 3) ~1 m right of mechanical. Electrical (10, 11) is on the left side wall. Routes between stations run
+# along a lane ~1 m out from the station wall, clear of the boxes standing out from it.
+LANE_FRONT = 1.00        # front reading (to the station wall) that puts the robot on the lane
+PICKUP_ALONG = 2.20      # dock / tools line -> pickup, along the station wall           TODO measure
+PICKUP_TO_MECH = 1.00    # pickup -> mechanical, along the station wall                  TODO measure
+MECH_TO_ROW = 1.20       # mechanical -> the tools / dock line (tag spacing in tags.yaml)
+ELEC_PAST_ROW = 0.40     # from the tools / dock line on toward the electrical wall
+
+
+def to_lane():
+    """From parked at the pickup: straight back out to the lane, turn left (toward tools / electrical / dock)
+    and drive along it to the tools / dock line. Ends facing the electrical side wall."""
+    r = st['range']
+    once('lane.back', lambda: drive(-(LANE_FRONT - r) if r is not None and r < LANE_FRONT else -0.60))
+    once('lane.left', lambda: turn(90.0))
+    once('lane.along', lambda: drive(PICKUP_ALONG, stop_front=0.70, limit=40.0))
 
 
 def mission(test_station=None):
@@ -1001,7 +1229,12 @@ def mission(test_station=None):
     else:
         step('wait for the wake word', wake, ('mega', 'cams', 'mic', 'speaker'), oled='SAY NONTOK')
     say('answer')
-    step('leave the dock', lambda: leave_wall('dock.', 0.70, 2), ('mega',), motion=True)
+    LIVE.update(item='', station='')
+    plan('dock -> pickup', [(0.0, 0.0), (-0.48, 0.0), (-0.48, 2.2), (-1.81, 2.2)])
+    # dock -> pickup: off the dock wall, left, along the room past mechanical, left to face the pickup
+    step('leave the dock', lambda: (leave_wall('dock.', 0.70, 1),
+                                    once('dock.along', lambda: drive(PICKUP_ALONG, stop_front=0.35, limit=40.0)),
+                                    once('dock.left', lambda: turn(90.0))), ('mega',), motion=True)
     step('approach the pickup', lambda: approach('pickup.', (2, 3)), ('mega', 'cams'), motion=True)
     step('park at the pickup', lambda: dock_centred('pickup', (2, 3), guard=0.12, contact=0.213),
          ('mega', 'cams'), motion=True)
@@ -1011,31 +1244,50 @@ def mission(test_station=None):
         step('get the item', get_item, ('tray', 'speaker'), oled='PUT ITEM IN')
     show(('%s>%s' % (answer.get('item') or 'NO ITEM', (answer.get('station') or 'HOME')[:4])).upper())
     call(tray_enable, SetBool.Request(data=False))
-    if answer.get('station') == 'electrical':
-        step('leave the pickup', lambda: (once('pickup.back', lambda: drive(-0.10)),
-                                          once('pickup.turn', lambda: turn(90.0))), ('mega',), motion=True)
+    station = answer.get('station')
+    LIVE.update(item=answer.get('item') or '', station=station or '')
+    if station == 'mechanical':
+        plan('pickup -> mechanical', [(-1.81, 2.2), (-1.51, 2.2), (-1.51, 1.2), (-1.60, 1.2)])
+        # the old pickup -> mechanical route, mirrored: mechanical is now to the LEFT of the pickup
+        step('pickup to mechanical', lambda: (
+            once('mech.back', lambda: drive(-0.30)),
+            once('mech.left', lambda: turn(90.0)),
+            once('mech.along', lambda: drive(PICKUP_TO_MECH, stop_front=0.35)),
+            once('mech.right', lambda: turn(-90.0))), ('mega',), motion=True)
+        mechanical_tail()
+        return
+    if station == 'electrical':
+        plan('pickup -> electrical', [(-1.81, 2.2), (-1.02, 2.2), (-1.02, 0.0), (-1.02, -0.37), (-1.70, -0.37),
+                                      (-1.70, -0.82)])
+        step('pickup to electrical', lambda: (to_lane(),
+             once('elec.on', lambda: drive(ELEC_PAST_ROW, stop_front=0.70))), ('mega',), motion=True)
         step('approach electrical', lambda: ensure_far((10, 11)), ('mega', 'cams'), motion=True)
-        step('park at electrical', lambda: dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
+        step('park at electrical', lambda: (dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
+                                            confirm_at_box('electrical')),
              ('mega', 'cams'), motion=True)
         step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
         say('going_home')
-        step('leave electrical', lambda: (once('elec.back9', lambda: drive(-0.90)),
+        plan('electrical -> dock', [(-1.70, -0.82), (-1.70, -0.42), (0.0, 0.0)])
+        # back only 0.40 m: the old 0.90 m would now back into the tools box
+        step('leave electrical', lambda: (once('elec.back', lambda: drive(-0.40)),
                                           once('elec.turn', lambda: turn(90.0))), ('mega',), motion=True)
-        home_dist = 0.90
-    elif answer.get('station') == 'mechanical':
-        # 24 Nov, given by the team: from the pickup back 0.30 m, right 90, forward 0.90 m, left 90, dock
-        step('pickup to mechanical', lambda: (
-            once('mech.back', lambda: drive(-0.30)),
-            once('mech.right', lambda: turn(-90.0)),
-            once('mech.along', lambda: drive(1.10, stop_front=0.35)),   # 0.90 ended ~0.2 m short (24 Nov)
-            once('mech.left', lambda: turn(90.0))), ('mega',), motion=True)
-        mechanical_tail()
-        return
-    else:
-        log('item %r -> %r: no driven route there yet, taking it home' % (answer.get('item'), answer.get('station')))
+        home_dist = 1.00
+    elif station == 'tools':
+        plan('pickup -> tools', [(-1.81, 2.2), (-1.02, 2.2), (-1.02, 0.0), (-1.60, 0.0)])
+        step('pickup to tools', lambda: (to_lane(), once('tools.right', lambda: turn(-90.0))), ('mega',), motion=True)
+        step('approach tools', lambda: ensure_far((16, 17)), ('mega', 'cams'), motion=True)
+        step('park at tools', lambda: park_box('tools', (16, 17)), ('mega', 'cams'), motion=True)
+        step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
         say('going_home')
-        step('leave the pickup', lambda: leave_wall('pick.', 0.70, 2), ('mega',), motion=True)
+        plan('tools -> dock', [(-1.60, 0.0), (-0.92, 0.0), (0.0, 0.0)])
+        step('leave tools', lambda: leave_wall('tools.', 0.70, 2), ('mega',), motion=True)
         home_dist = 0.90
+    else:
+        log('item %r -> %r: no driven route there yet, taking it home' % (answer.get('item'), station))
+        say('going_home')
+        plan('pickup -> dock', [(-1.81, 2.2), (-1.02, 2.2), (-1.02, 0.0), (0.0, 0.0)])
+        step('leave the pickup', lambda: (to_lane(), once('pick.left', lambda: turn(90.0))), ('mega',), motion=True)
+        home_dist = 0.60
     step('approach the dock', lambda: approach('home.', (0, 1), home_dist), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
     say('docked')
@@ -1055,20 +1307,25 @@ def safe_stop():
             pass
 
 
-def park_mechanical():
-    """The mechanical box stands ~0.4 m out from the tag wall and hides the tags from the low cameras as the
-    robot closes in (24 Nov: the dock server lost them every time at 0.23 m to go), and its front face is what
-    the ultrasonic reads. So: square and centre on the tags from ~0.55 m out, then push straight in on the
-    encoders until the wheels stall against the box (at most the measured gap + 3 cm)."""
+def park_box(station, ids):
+    """A return box standing out from its tag wall hides the tags from the low cameras as the robot closes in
+    (24 Nov: the dock server lost them every time at 0.23 m to go), and its front face is what the ultrasonic
+    reads. So: square and centre on the tags from ~0.55 m out, then push straight in on the encoders until the
+    wheels stall against the box (at most the measured gap + 3 cm), then check it is really at the box."""
     r = st['range']
     if r is not None and r < 0.45:   # a retry from close in: back out to where the tags are in view
         drive(-(0.55 - r))
-    square_and_center((12, 13))
+    square_and_center(ids)
     r = st['range']
     gap = r if r is not None and r < NO_ECHO else 0.50
-    log('mechanical: box %.3f m ahead, pushing in' % gap)
+    log('%s: box %.3f m ahead, pushing in' % (station, gap))
     push_in(min(0.65, gap + 0.03), limit=15.0)
-    WHERE['at'] = 'mechanical'
+    confirm_at_box(station)   # the gap came from the front sensor alone, which may have read the box edge
+    WHERE['at'] = station
+
+
+def park_mechanical():
+    park_box('mechanical', (12, 13))
 
 
 def mechanical_tail():
@@ -1076,16 +1333,65 @@ def mechanical_tail():
     step('park at mechanical', park_mechanical, ('mega', 'cams'), motion=True)
     step('dump', dump, ('mega', 'speaker'), oled='DUMPING')
     say('going_home')
+    plan('mechanical -> dock', [(-1.60, 1.2), (-1.02, 1.2), (-1.02, 0.0), (0.0, 0.0)])
     r0 = st['range']
-    step('mechanical to the pickup row', lambda: (
-        once('mhome.back', lambda: drive(-(0.51 - r0) if r0 is not None and r0 < 0.51 else -0.30)),
+    # out to the lane (not 0.51 m as on 24 Nov: the robot would now graze the tools box), left, along to the
+    # tools / dock line, left again to face the dock
+    step('mechanical to the dock line', lambda: (
+        once('mhome.back', lambda: drive(-(LANE_FRONT - r0) if r0 is not None and r0 < LANE_FRONT else -0.60)),
         once('mhome.left1', lambda: turn(90.0)),
-        once('mhome.along', lambda: drive(1.10, stop_front=0.35)),
+        once('mhome.along', lambda: drive(MECH_TO_ROW, stop_front=0.70)),
         once('mhome.left2', lambda: turn(90.0))), ('mega',), motion=True)
-    step('approach the dock', lambda: approach('home.', (0, 1), 1.10), ('mega', 'cams'), motion=True)
+    step('approach the dock', lambda: approach('home.', (0, 1), 0.60), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
     say('docked')
     show('DOCKED')
+
+
+def live_layout():
+    """The room for the live view, written once: walls, tags, stations (map metres)."""
+    import json
+    import yaml
+    try:
+        cfg = '/nontok/ros2_ws/src/'
+        walls = yaml.safe_load(open(cfg + 'nontok_navigation/config/lab_layout.yaml'))
+        tags = yaml.safe_load(open(TAGS_FILE))['tags']
+        stations = yaml.safe_load(open(cfg + 'nontok_navigation/config/stations.yaml'))['stations']
+        out = {'bounds': walls['bounds'], 'walls': [w['rect'] for w in walls.get('walls') or []],
+               'tags': {str(i): [t['x'], t['y'], t['yaw_deg']] for i, t in tags.items()},
+               'stations': {name: [sum(tags[i]['x'] for i in e['tag_ids']) / 2.0,
+                                   sum(tags[i]['y'] for i in e['tag_ids']) / 2.0, e['tag_ids']]
+                            for name, e in stations.items() if all(i in tags for i in e['tag_ids'])}}
+        with open(LIVE_LAYOUT + '.tmp', 'w') as handle:
+            json.dump(out, handle)
+        os.replace(LIVE_LAYOUT + '.tmp', LIVE_LAYOUT)
+    except Exception as e:
+        log('live view: no room layout (%s)' % e)
+
+
+def live_writer():
+    """Five times a second: what the robot is doing and thinking, ~1-2 KB of JSON."""
+    import json
+    while True:
+        try:
+            now = time.time()
+            g = st.get('gpose') if now - st.get('gpose_t', 0) < 1.0 else None
+            o = (st['x'], st['y'], st['yaw']) if st.get('x') is not None and now - st.get('odom_t', 0) < 1.0 else None
+            tags = {cam: ids for cam, (t, ids) in st['tags'].items() if now - t < 1.0}
+            out = dict(LIVE, t=round(now, 2), up_s=round(now - T0, 1), oled=st.get('oled', ''),
+                       armed=ARMED['on'], at=WHERE['at'], front=st['range'], tags=tags,
+                       pose_global=None if g is None else [round(v, 3) for v in g],
+                       pose_odom=None if o is None else [round(v, 3) for v in o])
+            with open(LIVE_FILE + '.tmp', 'w') as handle:
+                json.dump(out, handle)
+            os.replace(LIVE_FILE + '.tmp', LIVE_FILE)
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+
+live_layout()
+threading.Thread(target=live_writer, name='live', daemon=True).start()
 
 
 # ---- forever: listen, deliver, come home; after any failure find the dock again ----
@@ -1094,7 +1400,7 @@ learn()
 log('last known place: %s' % WHERE['at'])
 runs = 0
 TEST_FILE = '/tmp/nontok_test'   # holds how many unattended test loops are left (no wake word, no item)
-TEST_STATIONS = ('mechanical', 'electrical')
+TEST_STATIONS = ('mechanical', 'electrical', 'tools')
 TEST = {'n': 0, 'fails': 0}
 RESUME = '/tmp/resume_mechanical'
 if os.path.exists(RESUME):   # a run stopped in front of the mechanical station with the item still aboard

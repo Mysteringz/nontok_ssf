@@ -11,10 +11,12 @@ default_size: 0.160
 tags:
   0:  {x: 0.35,  y: 0.15,  z: 0.20, yaw_deg: 180.0}   # dock, LEFT as you face it (camera check 24 Nov; the map package had 0 and 1 swapped). along 0, out 135
   1:  {x: 0.35,  y: -0.15, z: 0.20, yaw_deg: 180.0}   # dock, RIGHT as you face it. along 0, out 105
-  2:  {x: -2.15, y: -0.15, z: 0.20, yaw_deg: 0.0}     # pickup, left.                               along 250, out 105
-  3:  {x: -2.15, y: 0.15,  z: 0.20, yaw_deg: 0.0}     # pickup, right.                              along 250, out 135
+  2:  {x: -2.15, y: 2.05,  z: 0.20, yaw_deg: 0.0}     # pickup, left. 25 Nov: moved ~1 m right of mechanical. TODO measure
+  3:  {x: -2.15, y: 2.35,  z: 0.20, yaw_deg: 0.0}     # pickup, right. 25 Nov: moved with 2.                  TODO measure
   10: {x: -1.55, y: -1.20, z: 0.20, yaw_deg: 90.0}    # electrical, left.                           along 190, out 0
   11: {x: -1.85, y: -1.20, z: 0.20, yaw_deg: 90.0}    # electrical, right (reference tag).          along 220, out 0
   12: {x: -2.15, y: 1.05,  z: 0.20, yaw_deg: 0.0}     # mechanical, left.                           along 250, out 225
   13: {x: -2.15, y: 1.35,  z: 0.20, yaw_deg: 0.0}     # mechanical, right.                          along 250, out 255
-  # 14-17 (unknown, tools) are not in the room any more.
+  16: {x: -2.15, y: -0.15, z: 0.20, yaw_deg: 0.0}     # tools, left. 25 Nov: on the tools box at the old pickup spot (along 250, out 105)
+  17: {x: -2.15, y: 0.15,  z: 0.20, yaw_deg: 0.0}     # tools, right.                                         (along 250, out 135)
+  # 14, 15 (unknown) are not in the room any more.

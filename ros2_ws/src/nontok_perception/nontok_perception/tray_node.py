@@ -18,7 +18,7 @@ from rcl_interfaces.srv import SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 from std_srvs.srv import SetBool, Trigger
 
 from nontok_interfaces.msg import TrayState
@@ -89,7 +89,12 @@ class TrayNode(Node):
         self.create_service(ClassifyItem, 'tray/classify', self.on_classify, callback_group=group)
         self.create_subscription(Bool, 'tray/sim_occupied', self.on_sim, 5, callback_group=group)
         # A small picture of the tray for the dashboard, only while someone is watching it.
+        # detect (the field dashboard's switch, changeable while running): box the item against the
+        # empty-tray reference and classify it in every picture; tray/detection carries the answer as JSON.
+        p('detect', False)
+        p('debug_period_s', 0.5)
         self.debug_pub = self.create_publisher(CompressedImage, 'tray/debug/compressed', 1)
+        self.detection_pub = self.create_publisher(String, 'tray/detection', 2)
         self.watched = self.last_debug = -1e9
         self.create_subscription(Bool, 'viz/watching', self.on_watching, 2, callback_group=group)
         self.create_timer(0.2, self.on_timer, callback_group=group)
@@ -212,14 +217,17 @@ class TrayNode(Node):
 
     def publish_picture(self, frame, reading) -> None:
         now = time.monotonic()
-        if now - self.watched > 3.0 or now - self.last_debug < 0.5:
+        if now - self.watched > 3.0 or now - self.last_debug < self.get_parameter('debug_period_s').value:
             return
         self.last_debug = now
         import cv2
-        view = cv2.resize(frame, (480, int(480 * frame.shape[0] / frame.shape[1])))
+        scale = 480.0 / frame.shape[1]
+        view = cv2.resize(frame, (480, int(round(frame.shape[0] * scale))))
         name = {tray_logic.EMPTY: 'EMPTY', tray_logic.OCCUPIED: 'OCCUPIED', tray_logic.MOVING: 'MOVING'}[reading.state]
         cv2.putText(view, '%s %.0f%%' % (name, 100 * reading.occupied_fraction), (8, 24),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        if self.get_parameter('detect').value:
+            self.draw_detection(view, frame, scale, reading)
         ok, encoded = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 60])
         if ok:
             msg = CompressedImage()
@@ -227,6 +235,38 @@ class TrayNode(Node):
             msg.format = 'jpeg'
             msg.data = encoded.tobytes()
             self.debug_pub.publish(msg)
+
+    def draw_detection(self, view, frame, scale, reading) -> None:
+        """Box and label the item (detect switch). Same box and crop as tray/classify uses."""
+        import cv2
+        import json
+        out = {'reference': reading.has_reference, 'box': None, 'item': '', 'confidence': 0.0, 'station': ''}
+        if not reading.has_reference:
+            cv2.putText(view, 'no empty-tray reference', (8, view.shape[0] - 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+        else:
+            with self.lock:
+                box = self.logic.item_box(frame) if reading.state != tray_logic.EMPTY else None
+                crop = self.logic.item_crop(frame, box) if box else None
+            if box:
+                x, y, w, h = (int(round(v * scale)) for v in box)
+                label = ''
+                if crop is not None and self.classifier is not None:
+                    item, confidence = self.classifier.classify(crop)
+                    station = self.items.get(item, '')
+                    sure = confidence >= self.min_confidence
+                    out.update(item=item, confidence=round(float(confidence), 3), station=station if sure else '')
+                    label = '%s %.0f%%%s' % (item, 100 * confidence, (' > ' + station) if sure and station else
+                                             ('' if sure else ' (unsure)'))
+                colour = (0, 220, 0) if label and out['station'] else (0, 200, 255)
+                cv2.rectangle(view, (x, y), (x + w, y + h), colour, 2)
+                if label:
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                    ty = y - 6 if y - th - 10 > 0 else y + h + th + 6
+                    cv2.rectangle(view, (x, ty - th - 4), (x + tw + 6, ty + 4), colour, -1)
+                    cv2.putText(view, label, (x + 3, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                out['box'] = [round(v / view.shape[1 - i % 2], 4) for i, v in enumerate((x, y, w, h))]
+        self.detection_pub.publish(String(data=json.dumps(out)))
 
     # ---- classification ----
     def on_classify(self, request, response):

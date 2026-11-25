@@ -4,7 +4,7 @@ Pure Python + OpenCV. The same item_crop() is used when collecting training imag
 classifying, so the classifier always sees items framed the same way.
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
+from typing import Tuple, List, Optional, Sequence
 
 import cv2
 import numpy as np
@@ -100,16 +100,20 @@ class TrayLogic:
         state = MOVING if moving else (OCCUPIED if self._occupied else EMPTY)
         return TrayReading(state, float(fraction), stable, True)
 
-    def item_crop(self, frame: np.ndarray) -> Optional[np.ndarray]:
-        """A square colour image of the item, or None if nothing differs from the empty tray."""
+    def item_box(self, frame: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """(x, y, w, h) around everything that differs from the empty tray, or None."""
         if self.reference is None:
             return None
+        points = cv2.findNonZero(self._changed_mask(_grey(frame)))
+        return None if points is None else tuple(int(v) for v in cv2.boundingRect(points))
+
+    def item_crop(self, frame: np.ndarray, box: Optional[Tuple[int, int, int, int]] = None) -> Optional[np.ndarray]:
+        """A square colour image of the item, or None if nothing differs from the empty tray."""
         cfg = self.cfg
-        changed = self._changed_mask(_grey(frame))
-        points = cv2.findNonZero(changed)
-        if points is None:
+        box = box or self.item_box(frame)
+        if box is None:
             return None
-        x, y, w, h = cv2.boundingRect(points)
+        x, y, w, h = box
         side = int(max(w, h) * (1.0 + 2.0 * cfg.crop_margin))
         side = max(side, cfg.min_crop_px)
         cx, cy = x + w / 2.0, y + h / 2.0
