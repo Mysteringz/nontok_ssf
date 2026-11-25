@@ -715,11 +715,11 @@ def visual_park(ids, contact):
     """No pose solve: square and centre, in to 0.45 m, one more check, then straight in on the encoders to the
     contact distance (closer than ~0.4 m a tag leaves a camera's view, so no centring there)."""
     log('visual park on %s to front %.3f m' % (ids, contact))
-    square_and_center(ids, tries=2)
+    square_and_center(ids, tries=2, side_tol=0.04)   # 4 cm: 2-3 cm strafes chased noise (25 Nov)
     r = st['range']
     if r is not None and r > 0.47:
         drive(min(0.30, r - 0.45), stop_front=0.45)
-        square_and_center(ids, tries=2)
+        square_and_center(ids, tries=2, side_tol=0.04)   # 4 cm: 2-3 cm strafes chased noise (25 Nov)
     for _ in range(3):    # 25 Nov: one pass stopped 1-3 cm short of the contact distance
         r = st['range'] or 0.3
         if r <= contact + 0.015:
@@ -1155,9 +1155,38 @@ def approach(prefix, ids, dist=0.90):
     ensure_far(ids)
 
 
+PAIR_STANDOFF = {(12, 13): 1.05, (16, 17): 1.05}   # boxes stand ~0.4 m out from these walls; others 0.75 m
+PAIR_STANDOFF_DEFAULT = 0.75
+PAIR_GOTO_MIN = 0.12      # sideways from in front of the pair beyond which goto_pair_front moves at all
+
+
+def goto_pair_front(ids):
+    """One diagonal move to straight out in front of a tag pair, facing it: turn toward the point standoff m out
+    from the pair along its wall normal, drive there at travel speed, turn to face the pair. 25 Nov: the room
+    sketch put the electrical tags ~0.4 m off, the fixed route arrived 0.44 m to the side and the centring
+    strafes (slow, slipping) took 40 s; this aims at what the cameras see instead of the map."""
+    g = measure(ids)
+    if g is None:
+        return
+    skew, mx, my = g
+    n = math.radians(skew) + math.pi                    # out of the wall, in the robot frame
+    standoff = PAIR_STANDOFF.get(tuple(sorted(ids)), PAIR_STANDOFF_DEFAULT)
+    tx, ty = mx + standoff * math.cos(n), my + standoff * math.sin(n)
+    sideways = -mx * math.cos(n + math.pi / 2) - my * math.sin(n + math.pi / 2)
+    if abs(sideways) <= PAIR_GOTO_MIN:
+        return                                           # about in front already: square_and_center finishes
+    bearing = math.atan2(ty, tx)
+    log('goto front of %s: %.2f m to the side, %.2f m ahead - turn %+.0f deg, drive %.2f m, turn %+.0f deg' % (
+        ids, sideways, mx, math.degrees(bearing), math.hypot(tx, ty), math.degrees(wrap(math.radians(skew) - bearing))))
+    turn(math.degrees(bearing), limit=20.0)
+    drive(math.hypot(tx, ty), stop_front=0.35, limit=30.0, fast=True)
+    turn(math.degrees(wrap(math.radians(skew) - bearing)), limit=20.0)
+
+
 def ensure_far(ids):
     if not tags_seen(ids):
         find_tags(ids, max_deg=60)
+    goto_pair_front(ids)
     square_and_center(ids)
     r = st['range']
     # 25 Nov: at 1.4-1.5 m the front ultrasonic flickers between an echo (1.449) and none (1.46): taken as an
