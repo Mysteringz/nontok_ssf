@@ -605,8 +605,11 @@ def confirm_at_box(station):
     x0, y0 = st['x'], st['y']
     end = time.time() + 10.0
     last_t, last_done = time.time(), 0.0
-    stalled = False
-    while not (sensors and all(lip_seen(k) for k in sensors)):
+    stalled = lip = False
+    while True:
+        if sensors and all(lip_seen(k) for k in sensors):
+            lip = True        # remembered: at 45 deg the lip edge is caught on and off (25 Nov: refused a good park)
+            break
         done = math.hypot(st['x'] - x0, st['y'] - y0)
         if done >= LIP_EXTRA or time.time() > end:
             break
@@ -622,7 +625,7 @@ def confirm_at_box(station):
     done = math.hypot(st['x'] - x0, st['y'] - y0)
     if stalled:
         log('%s: at the box - the wheels stalled against it after %.3f m more (%s)' % (station, done, lip_text()))
-    elif sensors and all(lip_seen(k) for k in sensors):
+    elif lip or (sensors and all(lip_seen(k) for k in sensors)):
         log('%s: at the box - lip seen after %.3f m more (%s)' % (station, done, lip_text()))
     else:
         raise Abort('%s: neither the box lip nor the box after %.3f m more (%s); not dumping short' % (
@@ -1156,7 +1159,8 @@ def approach(prefix, ids, dist=0.90):
     ensure_far(ids)
 
 
-PAIR_STANDOFF = {(12, 13): 1.05, (16, 17): 1.05}   # boxes stand ~0.4 m out from these walls; others 0.75 m
+PAIR_STANDOFF = {(12, 13): 1.05, (16, 17): 1.05,   # boxes stand ~0.4 m out from these walls; others 0.75 m
+                 (10, 11): 0.95}                   # electrical box ~0.22 m out: 0.75 left the front 0.31 m from it
 PAIR_STANDOFF_DEFAULT = 0.75
 PAIR_GOTO_MIN = 0.12      # sideways from in front of the pair beyond which goto_pair_front moves at all
 
@@ -1168,27 +1172,30 @@ def goto_pair_front(ids):
     strafes (slow, slipping) took 40 s; this aims at what the cameras see instead of the map."""
     g = measure(ids)
     if g is None:
-        return
+        return False
     skew, mx, my = g
     n = math.radians(skew) + math.pi                    # out of the wall, in the robot frame
     standoff = PAIR_STANDOFF.get(tuple(sorted(ids)), PAIR_STANDOFF_DEFAULT)
     tx, ty = mx + standoff * math.cos(n), my + standoff * math.sin(n)
     sideways = -mx * math.cos(n + math.pi / 2) - my * math.sin(n + math.pi / 2)
     if abs(sideways) <= PAIR_GOTO_MIN:
-        return                                           # about in front already: square_and_center finishes
+        return False                                     # about in front already: square_and_center finishes
     bearing = math.atan2(ty, tx)
     log('goto front of %s: %.2f m to the side, %.2f m ahead - turn %+.0f deg, drive %.2f m, turn %+.0f deg' % (
         ids, sideways, mx, math.degrees(bearing), math.hypot(tx, ty), math.degrees(wrap(math.radians(skew) - bearing))))
     turn(math.degrees(bearing), limit=20.0)
     drive(math.hypot(tx, ty), stop_front=0.35, limit=30.0, fast=True)
     turn(math.degrees(wrap(math.radians(skew) - bearing)), limit=20.0)
+    return True
 
 
 def ensure_far(ids):
     if not tags_seen(ids):
         find_tags(ids, max_deg=60)
-    goto_pair_front(ids)
-    square_and_center(ids)
+    # after a diagonal move it is in front within the measurement noise (+-5 cm at 0.8 m): the park squares
+    # again anyway, so squaring here only chased noise with tiny strafes (25 Nov, round 3: ~10 s a station)
+    if not goto_pair_front(ids):
+        square_and_center(ids)
     r = st['range']
     # 25 Nov: at 1.4-1.5 m the front ultrasonic flickers between an echo (1.449) and none (1.46): taken as an
     # echo it sent the robot to creep_to, which then saw "nothing ahead" and aborted, try after try. Beyond
