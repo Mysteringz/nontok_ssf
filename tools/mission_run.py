@@ -743,16 +743,15 @@ def visual_park(ids, contact):
     """No pose solve: square and centre, in to 0.45 m, one more check, then straight in on the encoders to the
     contact distance (closer than ~0.4 m a tag leaves a camera's view, so no centring there)."""
     log('visual park on %s to front %.3f m' % (ids, contact))
-    square_and_center(ids, tries=1)
-    r = st['range']
-    if r is None or r > 0.47:    # no 0.30 m cap any more: one drive, slowing for the 0.45 m reading
-        drive(min(1.20, (r if r is not None and r < NO_ECHO else 1.0) - 0.45), stop_front=0.45, fast=True)
-        square_and_center(ids, tries=2)
-    for _ in range(3):    # 25 Nov: one pass stopped 1-3 cm short of the contact distance
-        r = st['range'] or 0.3
-        if r <= contact + 0.015:
+    # square and centre once where the tags are well in view, then one drive to the contact distance, heading
+    # held (25 Nov: a second stop and square at 0.45 m cost ~3 s a station and changed nothing)
+    square_and_center(ids, tries=2)
+    for _ in range(3):    # one pass can stop 1-3 cm short; near the pickup the reading jumps a few cm, so 3 cm
+        r = st['range']
+        r = r if r is not None and r < NO_ECHO else 0.9
+        if r <= contact + 0.03:
             break
-        drive(min(0.30, r - contact), stop_front=contact)
+        drive(min(1.0, r - contact), stop_front=contact)
     log('parked by eye: front %.3f m' % (st['range'] or -1))
 
 
@@ -1237,7 +1236,6 @@ def ensure_far(ids):
             log('far: tags %.2f m ahead, ultrasonic %s - driving in on the camera distance' % (
                 g[1], 'sees nothing' if r is None or r >= NO_ECHO else '%.2f m (beyond its reliable range)' % r))
             drive(min(1.60, g[1] - 0.85), stop_front=0.60, limit=30.0, fast=True)
-            square_and_center(ids)
 
 
 def get_item():
@@ -1407,11 +1405,11 @@ ELEC_ACROSS = 0.68       # then across to in front of the electrical tags (lane 
 # the lane's L-shapes. Waypoints keep the robot's edge >= 0.14 m clear of the box fronts (mechanical and tools
 # boxes stand ~0.4 m out from the station wall, x -1.75). The approach at each station still aims at the tags.
 PICKUP_Y = 2.29
-W_PICKUP = (-1.05, PICKUP_Y)      # in front of the pickup, ~1.1 m from its tags
+W_PICKUP = (-1.25, PICKUP_Y)      # in front of the pickup, 0.9 m from its tags (front ~0.77 m)
 W_MECH = (-1.10, 1.20)            # in front of the mechanical box
 W_TOOLS = (-1.10, 0.00)           # in front of the tools box
 W_ELEC = (-1.30, -0.30)           # toward electrical, its tags ahead; x -1.30 passes the tools box 0.25 m clear
-W_DOCK = (-0.75, 0.00)            # in front of the dock, its tags in view
+W_DOCK = (-0.55, 0.00)            # in front of the dock, 0.9 m from its tags (front ~0.77 m)
 
 
 def go_to(point, name):
@@ -1450,7 +1448,7 @@ def mission(test_station=None):
         log('TEST: no wake word, no item, station %s' % test_station)
     else:
         step('wait for the wake word', wake, ('mega', 'cams', 'mic', 'speaker'), oled='SAY NONTOK')
-    say('answer')
+    say('answer', wait=False)    # while it arms and backs off the dock
     LIVE.update(item='', station='')
     plan('dock -> pickup', [(0.0, 0.0), (-0.48, 0.0), W_PICKUP, (-1.81, PICKUP_Y)])
     step('leave the dock', lambda: (back_to(0.70, 'dock.back'),
@@ -1485,7 +1483,7 @@ def mission(test_station=None):
         step('park at electrical', lambda: dock_centred('electrical', (10, 11), guard=0.12, contact=0.225),
              ('mega', 'cams'), motion=True)
         step('dump', dump, ('mega', 'speaker'), oled='DUMPING', armed=True)
-        say('going_home')
+        say('going_home', wait=False)
         plan('electrical -> dock', [(-1.70, -0.84), (-1.70, -0.59), W_DOCK, (0.0, 0.0)])
         # back only 0.25 m: backing away from electrical moves toward the tools box corner
         step('leave electrical', lambda: (once('ehome.back', lambda: drive(-0.25, fast=True)),
@@ -1499,21 +1497,21 @@ def mission(test_station=None):
         step('approach tools', lambda: ensure_far((16, 17)), ('mega', 'cams'), motion=True)
         step('park at tools', lambda: park_box('tools', (16, 17)), ('mega', 'cams'), motion=True)
         step('dump', dump, ('mega', 'speaker'), oled='DUMPING', armed=True)
-        say('going_home')
+        say('going_home', wait=False)
         plan('tools -> dock', [(-1.60, 0.0), W_DOCK, (0.0, 0.0)])
         step('leave tools', lambda: (back_to(0.70, 'thome.back'),
                                      once('thome.go', lambda: go_to(W_DOCK, 'the dock')),
                                      once('thome.face', lambda: face(0.0))), ('mega',), motion=True)
     else:
         log('item %r -> %r: no driven route there yet, taking it home' % (answer.get('item'), station))
-        say('going_home')
+        say('going_home', wait=False)
         plan('pickup -> dock', [(-1.80, PICKUP_Y), (-1.27, PICKUP_Y), W_DOCK, (0.0, 0.0)])
         step('leave the pickup', lambda: (back_to(0.75, 'phome.back'),
                                           once('phome.go', lambda: go_to(W_DOCK, 'the dock')),
                                           once('phome.face', lambda: face(0.0))), ('mega',), motion=True)
     step('approach the dock', lambda: ensure_far((0, 1)), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
-    say('docked')
+    say('docked', wait=False)
 
 
 def safe_stop():
@@ -1542,7 +1540,9 @@ def park_box(station, ids):
     r = st['range']
     gap = r if r is not None and r < NO_ECHO else 0.50
     log('%s: box %.3f m ahead, pushing in' % (station, gap))
-    push_in(min(0.65, gap + 0.03), limit=15.0)
+    # gap + 0.15: the front reads the box short (25 Nov: 0.65 m pushed, then 9 cm more to the stall) - the
+    # push stops on the stall anyway
+    push_in(min(0.85, gap + 0.15), limit=15.0)
     confirm_at_box(station)   # the gap came from the front sensor alone, which may have read the box edge
     WHERE['at'] = station
 
@@ -1555,14 +1555,14 @@ def mechanical_tail():
     step('approach mechanical', lambda: ensure_far((12, 13)), ('mega', 'cams'), motion=True)
     step('park at mechanical', park_mechanical, ('mega', 'cams'), motion=True)
     step('dump', dump, ('mega', 'speaker'), oled='DUMPING', armed=True)
-    say('going_home')
+    say('going_home', wait=False)
     plan('mechanical -> dock', [(-1.60, 1.2), (-1.20, 1.2), W_DOCK, (0.0, 0.0)])
     step('mechanical to the dock', lambda: (back_to(0.60, 'mhome.back'),
                                             once('mhome.go', lambda: go_to(W_DOCK, 'the dock')),
                                             once('mhome.face', lambda: face(0.0))), ('mega',), motion=True)
     step('approach the dock', lambda: ensure_far((0, 1)), ('mega', 'cams'), motion=True)
     step('park at the dock', lambda: dock_centred('dock', (0, 1), guard=0.12, contact=0.16), ('mega', 'cams'), motion=True)
-    say('docked')
+    say('docked', wait=False)
     show('DOCKED')
 
 
