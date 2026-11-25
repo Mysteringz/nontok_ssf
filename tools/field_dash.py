@@ -290,7 +290,8 @@ def main():
         """Is tools/mission_run.py running? Checked at most every 3 s (a process start costs the Nano)."""
         now = time.monotonic()
         if now - running['t'] > 3.0:
-            running.update(t=now, value=os.system('pgrep -f mission_run.py >/dev/null 2>&1') == 0)
+            # [m]: the shell running pgrep has the pattern in its own command line, so must not match it
+            running.update(t=now, value=os.system("pgrep -f '[m]ission_run.py' >/dev/null 2>&1") == 0)
         return running['value']
 
     def snapshot(now):
