@@ -7,8 +7,11 @@ tray_node:
     pause_detector: ""
     width: 640
     height: 480
-    # Tray floor corners in the image as fractions: x1 y1 x2 y2 x3 y3 x4 y4. TODO set once mounted.
-    roi: [0.10, 0.10, 0.90, 0.10, 0.90, 0.90, 0.10, 0.90]
+    # Tray floor corners in the image as fractions: x1 y1 x2 y2 x3 y3 x4 y4 (top-left, top-right,
+    # bottom-right, bottom-left). 25 Nov, from the mounted camera's picture: the floor only. The old
+    # 10-90 % box took in the side walls and the room beyond the far edge, and a change there (people,
+    # shadows at the pickup) read as "item in the tray" with nothing in it - classified as scissor.
+    roi: [0.32, 0.17, 0.70, 0.17, 0.88, 0.95, 0.07, 0.95]
     diff_threshold: 25
     occupied_on: 0.02
     occupied_off: 0.01
