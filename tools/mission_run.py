@@ -562,7 +562,8 @@ def push_in(dist, limit=12.0):
     """Forward on the encoders only, ignoring the front sensor (it reads the box itself), slowly, until `dist`
     or the wheels stall against the box (< 5 mm in 1 s). 24 Nov: the mechanical drop landed ~20 cm short."""
     x0, y0 = st['x'], st['y']
-    end = time.time() + limit
+    t_start = time.time()
+    end = t_start + limit
     last_t, last_done = time.time(), 0.0
     while True:
         done = math.hypot(st['x'] - x0, st['y'] - y0)
@@ -575,8 +576,10 @@ def push_in(dist, limit=12.0):
             last_t, last_done = time.time(), done
         if time.time() > end:
             break
-        # 25 Nov: 0.6 m at 0.05 m/s took 12 s - park speed to 10 cm short of the box, then slowly into it
-        send(vx=PARK_SPEED if done < dist - 0.10 else 0.05)
+        # 25 Nov: 0.6 m at 0.05 m/s took 12 s - fast to 12 cm short of the box, then slowly into it
+        fast_left = dist - 0.12 - done
+        v = min(0.30, math.sqrt(2 * DECEL * max(0.0, fast_left)), 0.06 + TRAVEL_ACCEL * (time.time() - t_start))
+        send(vx=max(0.05, v) if fast_left > 0 else 0.05)
         time.sleep(0.05)
     stop()
     log('pushed in %.3f m (encoders), front %.3f m' % (math.hypot(st['x'] - x0, st['y'] - y0), st['range'] or -1))
@@ -715,7 +718,7 @@ def measure(ids, secs=0.4):
     return g
 
 
-def square_and_center(ids, tries=3, skew_tol=4.0, side_tol=0.04):
+def square_and_center(ids, tries=3, skew_tol=5.0, side_tol=0.04):
     """Square to the wall (one turn), then crab until the pair's middle is straight ahead (one slide).
     Acts only beyond 3 deg / 4 cm so it does not chase noise: 25 Nov, 2-3 cm strafes twisted the robot
     3.5-5 deg, which then cost a turn and another measurement, 3-4 times per station."""
@@ -746,6 +749,9 @@ def visual_park(ids, contact):
     # square and centre once where the tags are well in view, then one drive to the contact distance, heading
     # held (25 Nov: a second stop and square at 0.45 m cost ~3 s a station and changed nothing)
     square_and_center(ids, tries=2)
+    r = st['range']
+    if r is not None and r < NO_ECHO and r - contact > 0.25:   # travel speed to 15 cm short, then park speed
+        drive(r - contact - 0.15, stop_front=contact + 0.15, fast=True)
     for _ in range(3):    # one pass can stop 1-3 cm short; near the pickup the reading jumps a few cm, so 3 cm
         r = st['range']
         r = r if r is not None and r < NO_ECHO else 0.9
@@ -769,10 +775,10 @@ def dock_centred_inner(station, ids, guard, contact):
     r = st['range']
     if r is not None and r < 0.45:   # a retry from close in: back out to where both tags are in view
         drive(-(0.55 - r))
-    square_and_center(ids)
     if not USE_DOCK_SERVER:
-        visual_park(ids, contact)
+        visual_park(ids, contact)   # it squares itself (25 Nov: squared here 3x first, ~5 s)
         return
+    square_and_center(ids)
     try:
         dock_at(station, guard)
     except Abort as e:
@@ -1276,7 +1282,7 @@ def dump():
     say('delivered', wait=False)   # while the tray tips (25 Nov: said first, then tipped: ~2 s)
     if not call(set_tray, SetTray.Request(angle_deg=120.0), 8).success:
         raise Abort('tray did not tilt')
-    time.sleep(1.5)
+    time.sleep(1.0)   # was 1.5
     call(set_tray, SetTray.Request(angle_deg=0.0), 8)
     done.add('dumped')
 
