@@ -157,7 +157,7 @@ function draw(d) {
     g.strokeStyle = 'rgba(8,126,128,.45)'; g.lineWidth = 2; g.beginPath();
     trail.forEach(([x, y], i) => i ? g.lineTo(SX(y), SY(x)) : g.moveTo(SX(y), SY(x))); g.stroke();
   }
-  const p = d && (d.pose_global || d.pose_odom);
+  const p = d && (d.pose_map || d.pose_global || d.pose_odom);
   if (p) {
     const [x, y, yaw] = p, cx = SX(y), cy = SY(x);
     g.save(); g.translate(cx, cy); g.rotate(Math.atan2(Math.cos(yaw), Math.sin(yaw)));   // screen angle of the heading
@@ -196,12 +196,14 @@ function render(d) {
   $('stageFoot').textContent = `${d.stage}${d.at ? ' · last parked: ' + d.at : ''}`;
   $('item').textContent = d.item || '—';
   $('itemFoot').textContent = d.station ? 'goes to ' + d.station : (d.item ? 'no station: going home' : 'nothing aboard yet');
-  const p = d.pose_global || d.pose_odom;
-  $('poseSrc').textContent = d.pose_global ? 'map (EKF)' : d.pose_odom ? 'odometry' : 'none';
+  const p = d.pose_map || d.pose_global || d.pose_odom;
+  $('poseSrc').textContent = d.pose_map ? 'anchored' : d.pose_global ? 'EKF' : d.pose_odom ? 'odometry only' : 'none';
+  $('poseSrc').className = 'small-badge' + (d.pose_map ? ' badge live' : ' badge warn');
   $('pose').textContent = p ? `${p[0].toFixed(2)}, ${p[1].toFixed(2)} m` : '—';
   const loc = d.located;
   $('poseFoot').textContent = (p ? `heading ${(p[2] * 57.3).toFixed(0)}°` : 'no pose') +
-    (loc ? ` · located on ${loc.station} tags ${Math.round(now - loc.t)} s ago at ${loc.x.toFixed(2)}, ${loc.y.toFixed(2)}` : '');
+    (d.anchor ? ` · fixed on ${d.anchor.src} ${d.anchor.age_s < 2 ? 'just now' : Math.round(d.anchor.age_s) + ' s ago'}, odometry since`
+              : ' · not fixed on tags yet: raw odometry from where the stack started');
   $('front').textContent = d.front == null ? '—' : d.front >= 1.45 ? 'clear' : Math.round(d.front * 1000) + ' mm';
   const tags = Object.entries(d.tags || {}).map(([c, ids]) => `${c.replace('front_', '')}: ${ids.length ? ids.join(', ') : '—'}`);
   $('tags').textContent = tags.length ? 'tags · ' + tags.join(' · ') : 'no camera data';

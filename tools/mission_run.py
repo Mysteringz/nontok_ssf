@@ -627,6 +627,45 @@ def confirm_at_box(station):
             station, done, lip_text()))
 
 
+# ---- the robot's map pose for the live view: anchored on tags, carried on wheel odometry in between ----
+# 25 Nov: odometry/global equalled raw odometry (no tag fixes reached the EKF), so the live view put the
+# docked robot inside the dock wall. The mission measures tag pairs all the time; each one fixes the pose.
+ANCHOR = {}
+_TAGS = {}
+FRONT_SENSOR_X = 0.13   # front ultrasonic ahead of the robot centre (robot.yaml)
+
+
+def tags_map():
+    if not _TAGS:
+        import yaml
+        _TAGS.update(yaml.safe_load(open(TAGS_FILE))['tags'])
+    return _TAGS
+
+
+def set_anchor(pose, src):
+    if st.get('x') is None:
+        return
+    ANCHOR.update(map=tuple(pose), odom=(st['x'], st['y'], st['yaw']), t=time.time(), src=src)
+
+
+def map_pose():
+    """(x, y, heading) in the map: the last anchor moved on by the odometry since then; None before any."""
+    if not ANCHOR or st.get('x') is None:
+        return None
+    (mx, my, mth), (ox, oy, oth) = ANCHOR['map'], ANCHOR['odom']
+    dx, dy = st['x'] - ox, st['y'] - oy
+    lx, ly = math.cos(oth) * dx + math.sin(oth) * dy, -math.sin(oth) * dx + math.cos(oth) * dy
+    return (mx + math.cos(mth) * lx - math.sin(mth) * ly, my + math.sin(mth) * lx + math.cos(mth) * ly,
+            wrap(mth + st['yaw'] - oth))
+
+
+def anchor_at_dock():
+    """Parked at the dock: square to its wall, centred, the front ultrasonic gives the distance."""
+    r = st['range']
+    if r is not None and r < 0.35:
+        set_anchor((0.35 - FRONT_SENSOR_X - r, 0.0, 0.0), 'parked at the dock')
+
+
 def measure(ids, secs=0.6):
     """The pair's (skew, middle x, middle y), the median over `secs` of fresh frames (both cameras)."""
     vals, end = [], time.time() + secs
@@ -637,7 +676,14 @@ def measure(ids, secs=0.6):
         time.sleep(0.1)
     if not vals:
         return None
-    return tuple(float(np.median([v[k] for v in vals])) for k in range(3))
+    g = tuple(float(np.median([v[k] for v in vals])) for k in range(3))
+    try:
+        tags = tags_map()
+        if all(i in tags for i in ids):
+            set_anchor(pose_from_pair(ids, g, tags), 'tags %s' % '/'.join(str(i) for i in ids))
+    except Exception:
+        pass
+    return g
 
 
 def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.025):
@@ -680,6 +726,8 @@ def visual_park(ids, contact):
 def dock_centred(station, ids, guard, contact):
     dock_centred_inner(station, ids, guard, contact)
     WHERE['at'] = station
+    if station == 'dock':
+        anchor_at_dock()
 
 
 def dock_centred_inner(station, ids, guard, contact):
@@ -1171,7 +1219,10 @@ def docked():
     r = st['range']
     if r is None or r > 0.30:   # 25 Nov: "dock tags in view within 0.65 m" let a robot stopped 0.64 m out count
         return False            # as docked; parked it reads 0.16-0.24 m
-    return tags_seen((0, 1)) or (WHERE['at'] in (None, 'dock') and not tags_seen(OTHER_TAGS))
+    if tags_seen((0, 1)) or (WHERE['at'] in (None, 'dock') and not tags_seen(OTHER_TAGS)):
+        anchor_at_dock()
+        return True
+    return False
 
 
 def spin_search(ids, step_deg=30):
@@ -1444,6 +1495,8 @@ def live_writer():
             out = dict(LIVE, t=round(now, 2), up_s=round(now - T0, 1), oled=st.get('oled', ''),
                        armed=ARMED['on'], at=WHERE['at'], front=st['range'], tags=tags,
                        pose_global=None if g is None else [round(v, 3) for v in g],
+                       pose_map=None if map_pose() is None else [round(v, 3) for v in map_pose()],
+                       anchor=None if not ANCHOR else {'src': ANCHOR['src'], 'age_s': round(now - ANCHOR['t'], 1)},
                        pose_odom=None if o is None else [round(v, 3) for v in o])
             with open(LIVE_FILE + '.tmp', 'w') as handle:
                 json.dump(out, handle)
