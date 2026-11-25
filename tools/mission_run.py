@@ -688,9 +688,10 @@ def measure(ids, secs=0.6):
     return g
 
 
-def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.025):
+def square_and_center(ids, tries=3, skew_tol=3.0, side_tol=0.04):
     """Square to the wall (one turn), then crab until the pair's middle is straight ahead (one slide).
-    Acts only beyond 3 deg / 2.5 cm so it does not chase noise."""
+    Acts only beyond 3 deg / 4 cm so it does not chase noise: 25 Nov, 2-3 cm strafes twisted the robot
+    3.5-5 deg, which then cost a turn and another measurement, 3-4 times per station."""
     for _ in range(tries):
         time.sleep(0.3)
         g = measure(ids)
@@ -715,11 +716,11 @@ def visual_park(ids, contact):
     """No pose solve: square and centre, in to 0.45 m, one more check, then straight in on the encoders to the
     contact distance (closer than ~0.4 m a tag leaves a camera's view, so no centring there)."""
     log('visual park on %s to front %.3f m' % (ids, contact))
-    square_and_center(ids, tries=2, side_tol=0.04)   # 4 cm: 2-3 cm strafes chased noise (25 Nov)
+    square_and_center(ids, tries=2)
     r = st['range']
     if r is not None and r > 0.47:
         drive(min(0.30, r - 0.45), stop_front=0.45)
-        square_and_center(ids, tries=2, side_tol=0.04)   # 4 cm: 2-3 cm strafes chased noise (25 Nov)
+        square_and_center(ids, tries=2)
     for _ in range(3):    # 25 Nov: one pass stopped 1-3 cm short of the contact distance
         r = st['range'] or 0.3
         if r <= contact + 0.015:
